@@ -1,5 +1,5 @@
 """
-Tavolo D&D 5.5e — server Flask sottile.
+Tavolo Dangeon MAaster — server Flask sottile.
 
 Routing + collante. Tutta la logica vive in:
   dnd/   — regole, schede, bestiario, stato
