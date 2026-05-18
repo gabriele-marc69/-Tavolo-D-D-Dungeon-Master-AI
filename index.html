@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚔ Tavolo D&D 5.5e</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=EB+Garamond:ital@0;1&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">⚔ <span>Tavolo D&D 5.5e</span></div>
+  <div class="status">
+    <span class="badge" id="dm-status">DM: <strong id="dm-name">—</strong> <span id="dm-dot" class="dot off"></span></span>
+    <span class="badge">Fase: <strong id="phase-name">setup</strong></span>
+    <span class="badge">Turno: <strong id="turn-num">0</strong></span>
+  </div>
+  <div class="actions">
+    <button id="btn-tts" title="Lettura vocale — voce umana Edge TTS" aria-pressed="false">🔇</button>
+    <button id="btn-music" title="Musica di sottofondo adattiva alla scena" aria-pressed="false">🎵 Off</button>
+    <input id="music-vol" type="range" min="0" max="100" value="100"
+           title="Volume musica" aria-label="Volume musica"
+           style="width:84px;vertical-align:middle">
+    <button id="btn-music-gen" title="Fai comporre al DM una nuova colonna sonora">🎼</button>
+    <button id="btn-repeat" title="Rileggi l'ultimo messaggio del DM">🔁 Ripeti</button>
+    <button id="btn-reload" title="Rigenera l'ultima risposta del DM">🔃 Rigenera</button>
+    <select id="tts-voice" title="Voce narrante" style="width:auto;min-width:90px"></select>
+    <button id="btn-setup">⚙ Setup</button>
+    <button id="btn-chars">👤 Personaggi</button>
+    <button id="btn-bestiary">🐉 Bestiario</button>
+    <button id="btn-debug" title="Comunicazione app ⇄ frontend">🐞 Debug</button>
+    <button id="btn-save">💾 Salva</button>
+    <button id="btn-load">📂 Carica</button>
+    <button id="btn-new" class="danger">🔄 Nuova</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- COLONNA SINISTRA: GIOCATORI -->
+  <aside class="col col-players">
+    <h2>Giocatori</h2>
+    <div id="players-list" class="players-list">
+      <p class="empty">Nessun giocatore. Apri <button class="link" onclick="openModal('chars')">Personaggi</button> per crearne.</p>
+    </div>
+  </aside>
+
+  <!-- COLONNA CENTRALE: CHAT DM -->
+  <section class="col col-chat">
+    <div id="chat-log" class="chat-log">
+      <div class="msg msg-system">Benvenuto al Tavolo D&D 5.5e. Apri <button class="link" onclick="openModal('setup')">Setup</button> per collegarti a DeepSeek e iniziare.</div>
+    </div>
+    <div id="typing" class="typing">⏳ Il DM sta pensando...</div>
+    <form id="chat-form" class="chat-form" autocomplete="off">
+      <input id="chat-input" type="text" placeholder="Scrivi un'azione, una risposta o un comando..." disabled>
+      <button id="chat-send" disabled>▶</button>
+    </form>
+  </section>
+
+  <!-- COLONNA DESTRA: MAPPA + INFO -->
+  <aside class="col col-map">
+    <h2>Mappa</h2>
+    <div id="map-render" class="map map-empty" title="Clicca per ingrandire la mappa">— nessuna mappa —</div>
+    <div class="zone-info">
+      <div><strong>Zona:</strong> <span id="zone-name">—</span></div>
+      <div><strong>Posizione:</strong> <span id="zone-pos">—</span></div>
+    </div>
+    <details class="map-legend">
+      <summary>Legenda mappa</summary>
+      <div class="legend-grid">
+        <span><i class="lg lg-party">☻</i> Party</span>
+        <span><i class="lg lg-start">✦</i> Partenza</span>
+        <span><i class="lg lg-exit">★</i> Obiettivo</span>
+        <span><i class="lg lg-combat">⚔</i> Combattimento</span>
+        <span><i class="lg lg-explore">❖</i> Esplora</span>
+        <span><i class="lg lg-social">☺</i> Incontro</span>
+        <span><i class="lg lg-door">▣</i> Porta</span>
+        <span><i class="lg lg-trap">✸</i> Trappola</span>
+        <span><i class="lg lg-water">≈</i> Acqua</span>
+        <span><i class="lg lg-stair">⇕</i> Scale</span>
+        <span><i class="lg lg-tree">♣</i> Albero</span>
+        <span><i class="lg lg-grass">„</i> Sterpaglia</span>
+        <span><i class="lg lg-rock">●</i> Masso</span>
+        <span><i class="lg lg-fire">♨</i> Falò</span>
+        <span><i class="lg lg-bridge">≡</i> Ponte</span>
+        <span><i class="lg lg-chest">⊡</i> Forziere</span>
+        <span><i class="lg lg-wall"></i> Muro</span>
+        <span><i class="lg lg-fog"></i> Inesplorato</span>
+      </div>
+    </details>
+
+    <div id="scene-panel" class="scene-panel hidden">
+      <h3>🖼 Scena <span class="scene-tag">illustrazione</span></h3>
+      <div id="scene-render" class="scene-frame">— nessun disegno —</div>
+      <figcaption id="scene-caption" class="scene-caption">—</figcaption>
+    </div>
+
+    <h3>🎲 Dadi</h3>
+    <div id="dice-box" class="dice-box">
+      <div id="dice-turn" class="dice-turn">Tiri liberi</div>
+      <div class="dice-grid">
+        <button class="die" data-sides="4">d4</button>
+        <button class="die" data-sides="6">d6</button>
+        <button class="die" data-sides="8">d8</button>
+        <button class="die" data-sides="10">d10</button>
+        <button class="die" data-sides="12">d12</button>
+        <button class="die die-d20" data-sides="20">d20</button>
+        <button class="die" data-sides="100">d100</button>
+      </div>
+      <div class="dice-opts">
+        <label class="dice-opt">N°
+          <input id="dice-qty" type="number" min="1" max="12" value="1">
+        </label>
+        <label class="dice-opt">Mod
+          <input id="dice-mod" type="number" min="-20" max="20" value="0">
+        </label>
+        <label class="dice-opt dice-check">
+          <input id="dice-adv" type="checkbox"> Vantaggio
+        </label>
+        <label class="dice-opt dice-check">
+          <input id="dice-dis" type="checkbox"> Svantaggio
+        </label>
+      </div>
+      <div id="dice-result" class="dice-result empty">— lancia un dado —</div>
+    </div>
+
+    <h3>🎲 Ultimi tiri</h3>
+    <ul id="rolls-log" class="rolls-log"><li class="empty">—</li></ul>
+  </aside>
+</main>
+
+<!-- MODALI -->
+
+<div id="modal-setup" class="modal hidden">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('setup')">✕</button>
+    <h2>⚙ Setup DM</h2>
+    <p>Collega un Dungeon Master IA via Chromium.</p>
+    <label>Modello DM
+      <select id="setup-preset">
+        <option value="deepseek">DeepSeek — chat.deepseek.com</option>
+        <option value="qwen">Qwen — chat.qwen.ai</option>
+        <option value="grok">Grok — grok.com</option>
+        <option value="claude">Claude — claude.ai</option>
+        <option value="custom">Personalizzato…</option>
+      </select>
+    </label>
+    <label>URL Chat IA
+      <input id="setup-url" type="url" value="https://chat.deepseek.com/">
+    </label>
+    <label>Nome
+      <input id="setup-name" type="text" value="DeepSeek Chat">
+    </label>
+    <label>Timeout risposta (s)
+      <input id="setup-timeout" type="number" min="15" max="600" value="180">
+    </label>
+    <p class="note">Al primo avvio si aprirà una finestra Chromium. Effettua il login alla chat se richiesto, poi torna qui.</p>
+    <div class="modal-actions">
+      <button id="setup-open" class="primary">Apri Chromium</button>
+    </div>
+    <div id="setup-result"></div>
+  </div>
+</div>
+
+<div id="modal-chars" class="modal hidden">
+  <div class="modal-box modal-large">
+    <button class="modal-close" onclick="closeModal('chars')">✕</button>
+    <h2>👤 Personaggi (max 5)</h2>
+    <p>Almeno 1 giocatore umano. Le schede 5.5e vengono generate automaticamente.</p>
+    <div id="chars-form" class="chars-form"></div>
+    <div class="modal-actions">
+      <button onclick="addCharRow()">+ Aggiungi PG</button>
+      <button id="chars-save" class="primary">💾 Genera schede</button>
+      <button id="chars-delete" class="danger">🗑 Elimina tutti</button>
+    </div>
+    <div id="chars-preview" class="chars-preview"></div>
+  </div>
+</div>
+
+<div id="modal-bestiary" class="modal hidden">
+  <div class="modal-box modal-large">
+    <button class="modal-close" onclick="closeModal('bestiary')">✕</button>
+    <h2>🐉 Bestiario</h2>
+    <label>Filtro CR
+      <input id="cr-min" type="number" min="0" max="30" step="0.25" value="0"> –
+      <input id="cr-max" type="number" min="0" max="30" step="0.25" value="5">
+      <button onclick="loadBestiary()">Filtra</button>
+    </label>
+    <div id="bestiary-list" class="bestiary-list">Caricamento...</div>
+  </div>
+</div>
+
+<div id="modal-debug" class="modal hidden">
+  <div class="modal-box modal-large">
+    <button class="modal-close" onclick="closeModal('debug')">✕</button>
+    <h2>🐞 Debug — comunicazione</h2>
+    <p>Traccia lo scambio dati tra frontend e server, e tra server e DM.</p>
+    <div class="debug-tabs">
+      <button class="debug-tab active" data-tab="net">Frontend ⇄ Server</button>
+      <button class="debug-tab" data-tab="dm">Server ⇄ DM</button>
+    </div>
+    <div class="modal-actions" style="margin-top:10px">
+      <button id="debug-refresh">↻ Aggiorna</button>
+      <button id="debug-clear">🧹 Pulisci log</button>
+      <label style="margin:0;display:flex;align-items:center;gap:6px;width:auto">
+        <input type="checkbox" id="debug-autorefresh" style="width:auto"> auto (2s)
+      </label>
+    </div>
+    <div id="debug-net" class="debug-pane"></div>
+    <div id="debug-dm" class="debug-pane hidden"></div>
+  </div>
+</div>
+
+<div id="modal-sheet" class="modal hidden">
+  <div class="modal-box modal-large">
+    <button class="modal-close" onclick="closeModal('sheet')">✕</button>
+    <div id="sheet-content"></div>
+  </div>
+</div>
+
+<div id="modal-map" class="modal hidden">
+  <div class="modal-box modal-map-box">
+    <button class="modal-close" onclick="closeModal('map')">✕</button>
+    <h2>🗺 Mappa del Dungeon</h2>
+    <div class="map-big-layout">
+      <div id="map-big-render" class="map-big">— nessuna mappa —</div>
+      <div class="map-big-side">
+        <div class="zone-info">
+          <div><strong>Zona:</strong> <span id="map-big-zone">—</span></div>
+          <div><strong>Posizione:</strong> <span id="map-big-pos">—</span></div>
+        </div>
+        <h3>Legenda</h3>
+        <div class="legend-grid legend-grid-big">
+          <span><i class="lg lg-party">☻</i> Party</span>
+          <span><i class="lg lg-start">✦</i> Partenza</span>
+          <span><i class="lg lg-exit">★</i> Obiettivo</span>
+          <span><i class="lg lg-combat">⚔</i> Combattimento</span>
+          <span><i class="lg lg-explore">❖</i> Esplora</span>
+          <span><i class="lg lg-social">☺</i> Incontro</span>
+          <span><i class="lg lg-door">▣</i> Porta</span>
+          <span><i class="lg lg-trap">✸</i> Trappola</span>
+          <span><i class="lg lg-water">≈</i> Acqua</span>
+          <span><i class="lg lg-stair">⇕</i> Scale</span>
+          <span><i class="lg lg-tree">♣</i> Albero</span>
+          <span><i class="lg lg-grass">„</i> Sterpaglia</span>
+          <span><i class="lg lg-rock">●</i> Masso</span>
+          <span><i class="lg lg-fire">♨</i> Falò</span>
+          <span><i class="lg lg-bridge">≡</i> Ponte</span>
+          <span><i class="lg lg-chest">⊡</i> Forziere</span>
+          <span><i class="lg lg-wall"></i> Muro</span>
+          <span><i class="lg lg-fog"></i> Inesplorato</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='music.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
