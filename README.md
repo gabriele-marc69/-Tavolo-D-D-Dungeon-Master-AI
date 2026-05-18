@@ -1,5 +1,5 @@
 [README.md](https://github.com/user-attachments/files/27964340/README.md)
-# 🎲 Tavolo D&D — Dungeon Master AI
+# 🎲 Tavolo D_IA_D — Dungeon Master AI
 
 Applicazione web Flask che simula un **Dungeon Master AI**.
 Il DM è pilotato da un'IA conversazionale: l'app guida una chat IA pubblica
