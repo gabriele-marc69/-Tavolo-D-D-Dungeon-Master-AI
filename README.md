@@ -1,21 +1,18 @@
 [README.md](https://github.com/user-attachments/files/27964340/README.md)
 # 🎲 Tavolo D&D — Dungeon Master AI
 
-Applicazione web Flask che simula un **Dungeon Master per Dungeons & Dragons 5.5e**.
+Applicazione web Flask che simula un **Dungeon Master AI**.
 Il DM è pilotato da un'IA conversazionale: l'app guida una chat IA pubblica
 (default [DeepSeek](https://chat.deepseek.com/)) tramite browser automatizzato,
 con generazione di schede personaggio, mappa ASCII, bestiario, tiri di dado,
 colonna sonora dinamica e voce narrante.
-
-> ⚠️ Progetto a scopo didattico/personale. D&D è un marchio di Wizards of the Coast;
-> i dati di gioco usati derivano dall'SRD 5.1.
 
 ---
 
 ## ✨ Funzionalità
 
 - **DM via webchat** — backend Playwright che pilota Chromium su una pagina chat IA pubblica
-- **Schede personaggio D&D 5.5e** — generazione completa: caratteristiche, HP, CA, abilità, incantesimi, equipaggiamento
+- **Schede personaggio** — generazione completa: caratteristiche, HP, CA, abilità, incantesimi, equipaggiamento
 - **Mappa ASCII** — generata ed aggiornata dal DM durante l'avventura
 - **Combattimento a turni** — tiri di dado, lancio incantesimi, aggiornamento HP
 - **Bestiario** — `bestiary.json` con mostri SRD, ampliabile via `bestiary_add.py`
