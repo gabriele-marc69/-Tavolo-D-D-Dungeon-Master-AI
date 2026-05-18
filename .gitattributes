@@ -1,0 +1,11 @@
+# Normalizza i fine riga: LF nel repo, conversione automatica in locale
+* text=auto eol=lf
+
+# File binari: nessuna conversione
+*.png  binary
+*.jpg  binary
+*.mp3  binary
+*.ico  binary
+
+# Script Windows: mantieni CRLF
+*.bat  text eol=crlf

@@ -1,0 +1,1390 @@
+/* ════════════════════════════════════════════════════════════════════
+   Tavolo D&D 5.5e — tema "Legno & Pergamena"
+   Telaio in legno scuro + borchie d'oro, pannelli in pergamena, mappa
+   come finestra sul dungeon. Stile da manuale di gioco di ruolo.
+   ════════════════════════════════════════════════════════════════════ */
+:root{
+  /* legno (telaio / tavolo) */
+  --wood:        #3a2614;
+  --wood-dk:     #241408;
+  --wood-lt:     #543a1e;
+  /* oro (borchie / filetti) */
+  --gold:        #d8b24a;
+  --gold-lt:     #f3dd9b;
+  --gold-dk:     #8a6a28;
+  --gold-glow:   rgba(216,178,74,0.40);
+  /* pergamena (pannelli / contenuti) */
+  --parch:       #f3e3bd;
+  --parch-2:     #ead7ab;
+  --parch-3:     #ddc593;
+  --parch-edge:  #c6a86f;
+  /* inchiostro (testo su pergamena) */
+  --ink:         #382a16;
+  --ink-soft:    #5e4a2a;
+  --ink-mute:    #8a7448;
+  /* cuoio (bolle giocatore) */
+  --leather:     #5b3a22;
+  --leather-fg:  #f6e9c9;
+  /* accenti tematici */
+  --burgundy:    #8c2f2f;
+  --emerald:     #3f7d4f;
+  --danger:      #9e2b2b;
+  --ok:          #3f7d4f;
+  --warn:        #c8862f;
+  --stone:       #221409;       /* sfondo mappa */
+  /* misure */
+  --radius:      9px;
+  --radius-sm:   6px;
+  /* font */
+  --font-display: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  --font-serif:   'EB Garamond', Georgia, 'Times New Roman', serif;
+  --font-ui:      'EB Garamond', Georgia, serif;
+  --font-mono:    'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+*{ box-sizing: border-box; }
+
+html, body{
+  margin: 0; padding: 0; height: 100%;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* il "tavolo": legno scuro con venatura e alone caldo centrale */
+body{
+  display: flex; flex-direction: column;
+  background-color: #2c1c0c;
+  background-image:
+    radial-gradient(ellipse 90% 65% at 50% 46%, rgba(120,82,36,0.55), transparent 78%),
+    repeating-linear-gradient(91deg,
+      rgba(0,0,0,0.24) 0 1px, transparent 1px 4px,
+      rgba(255,212,140,0.045) 4px 5px, transparent 5px 14px),
+    radial-gradient(circle at 18% 10%, rgba(255,205,130,0.06), transparent 42%),
+    linear-gradient(180deg, #3c2814, #1f1207);
+  background-attachment: fixed;
+}
+
+/* scrollbar a tema */
+::-webkit-scrollbar{ width: 11px; height: 11px; }
+::-webkit-scrollbar-track{ background: rgba(40,26,10,0.5); }
+::-webkit-scrollbar-thumb{
+  background: linear-gradient(180deg, var(--gold-dk), var(--wood-lt));
+  border-radius: 6px;
+  border: 2px solid rgba(40,26,10,0.6);
+}
+::-webkit-scrollbar-thumb:hover{ background: var(--gold-dk); }
+
+/* ── topbar — trave di legno con borchie d'oro ───────────────────── */
+.topbar{
+  position: relative;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(0,0,0,0.16) 0 2px, transparent 2px 9px),
+    linear-gradient(180deg, #543820, #2c1c0c);
+  border-bottom: 3px solid var(--gold-dk);
+  padding: 11px 18px 14px;
+  display: flex; align-items: center; gap: 14px;
+  min-height: 54px;
+  box-shadow: 0 5px 18px rgba(0,0,0,0.65),
+              inset 0 1px 0 rgba(255,220,150,0.18);
+  z-index: 10;
+}
+/* fila di borchie dorate sul bordo inferiore */
+.topbar::after{
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: -2px; height: 7px;
+  background-image:
+    radial-gradient(circle at 11px 50%,
+      var(--gold-lt) 0 1.6px, var(--gold) 1.6px 2.6px,
+      var(--gold-dk) 2.6px 3.4px, transparent 3.6px);
+  background-size: 26px 7px;
+  background-repeat: repeat-x;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6));
+}
+.brand{
+  font-family: var(--font-display);
+  font-size: 20px; font-weight: 700;
+  letter-spacing: 0.5px;
+  display: flex; align-items: center; gap: 8px;
+  color: var(--gold-lt);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+.brand span{
+  background: linear-gradient(180deg, #faecb8, var(--gold));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.status{ display: flex; gap: 7px; flex: 1; flex-wrap: wrap; }
+.badge{
+  background: linear-gradient(180deg, var(--parch), var(--parch-2));
+  border: 1px solid var(--gold-dk);
+  padding: 4px 11px;
+  border-radius: 11px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.55);
+}
+.badge strong{ color: var(--burgundy); font-weight: 700; }
+.actions{ display: flex; gap: 6px; align-items: center; }
+
+/* ── bottoni — placche di ottone ─────────────────────────────────── */
+button{
+  font-family: var(--font-display);
+  font-size: 12.5px; font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--ink);
+  background: linear-gradient(180deg, #f1e2b8, #d8bf88);
+  border: 1px solid var(--wood-dk);
+  border-radius: var(--radius-sm);
+  padding: 7px 13px;
+  cursor: pointer;
+  line-height: 1.2;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.55);
+  transition: background 0.13s, transform 0.1s, box-shadow 0.13s, color 0.13s;
+}
+button:hover:not(:disabled){
+  background: linear-gradient(180deg, var(--gold-lt), var(--gold));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5), 0 0 11px var(--gold-glow);
+}
+button:active:not(:disabled){ transform: translateY(0); }
+button:disabled{ opacity: 0.42; cursor: not-allowed; }
+button.primary{
+  background: linear-gradient(180deg, #ecbf52, var(--gold-dk));
+  color: #2a1b05;
+  border-color: #4f3711;
+}
+button.primary:hover:not(:disabled){
+  background: linear-gradient(180deg, var(--gold-lt), var(--gold));
+}
+button.danger{
+  background: linear-gradient(180deg, #ab423b, var(--burgundy));
+  color: var(--parch);
+  border-color: #380e0e;
+}
+button.danger:hover:not(:disabled){
+  background: linear-gradient(180deg, #c4574f, #9e2b2b);
+  color: #fff;
+}
+button.link{
+  background: none; border: none; box-shadow: none;
+  color: var(--burgundy);
+  padding: 0; font-family: var(--font-serif);
+  font-size: inherit; text-decoration: underline;
+}
+button.link:hover{
+  color: var(--gold-dk); background: none;
+  transform: none; box-shadow: none;
+}
+button[aria-pressed="true"]{
+  background: linear-gradient(180deg, #ecbf52, var(--gold-dk));
+  color: #2a1b05;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.5), 0 0 11px var(--gold-glow);
+}
+
+/* ── campi ───────────────────────────────────────────────────────── */
+input, select, textarea{
+  background: #fbf3da;
+  color: var(--ink);
+  border: 1px solid var(--parch-edge);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  width: 100%;
+  box-shadow: inset 0 1px 3px rgba(90,60,20,0.18);
+  transition: border-color 0.13s, box-shadow 0.13s;
+}
+input:focus, select:focus, textarea:focus{
+  outline: none;
+  border-color: var(--gold-dk);
+  box-shadow: inset 0 1px 3px rgba(90,60,20,0.18), 0 0 0 3px var(--gold-glow);
+}
+label{
+  display: block;
+  margin: 10px 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+label input, label select{ margin-top: 4px; }
+
+#tts-voice{
+  background: linear-gradient(180deg, var(--parch), var(--parch-2));
+  color: var(--ink);
+  border: 1px solid var(--gold-dk);
+  padding: 5px 8px;
+  font-size: 12px;
+  height: 31px;
+  max-width: 160px;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+.dot{
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff8a7a, var(--danger));
+  margin-left: 4px;
+  border: 1px solid rgba(0,0,0,0.4);
+}
+.dot.on{
+  background: radial-gradient(circle at 35% 30%, #9ff0a6, var(--emerald));
+  box-shadow: 0 0 8px var(--emerald);
+}
+
+/* ── layout: tre fogli di pergamena sul tavolo ───────────────────── */
+.layout{
+  flex: 1;
+  display: grid;
+  grid-template-columns: 272px 1fr 480px;
+  gap: 14px;
+  padding: 14px;
+  overflow: hidden;
+}
+.col{
+  position: relative;
+  border-radius: var(--radius);
+  padding: 20px 18px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;            /* niente salti larghezza con scrollbar */
+  display: flex; flex-direction: column;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 130% 70% at 50% 0%, #f8ebc8, transparent 72%),
+    radial-gradient(circle at 16% 82%, rgba(150,108,40,0.16), transparent 26%),
+    radial-gradient(circle at 86% 30%, rgba(120,82,28,0.13), transparent 22%),
+    radial-gradient(circle at 70% 88%, rgba(120,82,28,0.10), transparent 20%),
+    var(--parch);
+  border: 1px solid var(--wood-dk);
+  /* filetto d'oro interno (inset: non scorre col contenuto) */
+  box-shadow:
+    0 9px 24px rgba(0,0,0,0.6),
+    inset 0 0 0 4px var(--parch-2),
+    inset 0 0 0 5.5px var(--gold-dk),
+    inset 0 0 60px rgba(150,108,46,0.20);
+}
+.col-chat{ padding: 0; }
+.col h2{
+  position: relative;
+  font-family: var(--font-display);
+  font-size: 15px; font-weight: 700;
+  color: var(--wood-dk);
+  text-align: center;
+  letter-spacing: 1.2px;
+  margin: 2px 0 16px;
+  padding-bottom: 9px;
+  border-bottom: 2px solid var(--gold-dk);
+}
+.col h2::after{
+  content: "✦";
+  position: absolute; left: 50%; bottom: -9px;
+  transform: translateX(-50%);
+  font-size: 12px; color: var(--gold-dk);
+  background: var(--parch);
+  padding: 0 7px;
+}
+.col h3{
+  font-family: var(--font-display);
+  font-size: 11.5px; font-weight: 700;
+  color: var(--wood-dk);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 18px 0 9px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--gold-dk);
+}
+
+/* ── giocatori ───────────────────────────────────────────────────── */
+.players-list{ display: flex; flex-direction: column; gap: 9px; }
+.player-card{
+  position: relative;
+  background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(198,158,88,0.20));
+  border: 1px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.28);
+  transition: transform 0.14s, box-shadow 0.14s;
+}
+.player-card:hover{ transform: translateY(-2px); box-shadow: 0 7px 16px rgba(0,0,0,0.42); }
+.player-card.active{ box-shadow: 0 0 0 2px var(--gold), 0 0 16px var(--gold-glow); }
+.player-card.down{ opacity: 0.6; }
+.player-card.dead{ opacity: 0.35; filter: grayscale(0.85); }
+/* angoli ornati a squadra */
+.player-card::before, .player-card::after{
+  content: ""; position: absolute;
+  width: 9px; height: 9px;
+  border: 2px solid var(--gold-dk);
+  pointer-events: none;
+}
+.player-card::before{ top: 3px; left: 3px; border-right: 0; border-bottom: 0; }
+.player-card::after{ bottom: 3px; right: 3px; border-left: 0; border-top: 0; }
+.pc-head{ display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.pc-name{ font-family: var(--font-display); font-weight: 700; color: var(--wood-dk); font-size: 13px; }
+.pc-type{ font-size: 9px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.5px; }
+.pc-info{ font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+.pc-hp{
+  margin-top: 10px;
+  height: 10px;
+  background: rgba(58,38,14,0.4);
+  border: 1px solid var(--parch-edge);
+  border-radius: 6px;
+  position: relative;
+}
+.pc-hp-bar{
+  height: 100%;
+  background: linear-gradient(90deg, var(--burgundy), var(--warn), var(--emerald));
+  border-radius: 5px;
+  transition: width 0.35s;
+}
+.pc-hp-text{
+  position: absolute; top: -16px; right: 0;
+  font-size: 10px; color: var(--ink-mute);
+  font-family: var(--font-mono);
+}
+.empty{ color: var(--ink-mute); font-style: italic; font-size: 12.5px; }
+
+/* ── chat (centro) — manoscritto ─────────────────────────────────── */
+.col-chat{ overflow: hidden; display: flex; flex-direction: column; }
+.chat-log{
+  flex: 1;
+  overflow-y: auto;
+  padding: 26px 0;
+  display: flex; flex-direction: column;
+  scroll-behavior: smooth;
+}
+.msg{
+  padding: 12px 26px;
+  line-height: 1.45;
+  word-wrap: break-word;
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  font-size: 16.5px;
+}
+/* DM: narrazione su pergamena, con capolettera */
+.msg-dm{
+  font-family: var(--font-serif);
+  font-size: 18.5px;
+  color: var(--ink);
+  border-left: 3px double var(--gold-dk);
+  padding-left: 24px;
+  /* contiene il capolettera flottante: su messaggi corti NON sborda
+     nel messaggio successivo (niente accavallamenti) */
+  display: flow-root;
+}
+.msg-dm::first-letter{
+  font-family: var(--font-display);
+  font-size: 2.55em;
+  font-weight: 700;
+  color: var(--burgundy);
+  float: left;
+  line-height: 0.92;
+  margin: 5px 9px 0 0;
+  text-shadow: 1px 1px 0 rgba(216,178,74,0.5);
+}
+.msg-dm strong{ color: var(--gold-dk); font-weight: 700; }
+.msg-dm em{ color: var(--burgundy); font-style: italic; }
+/* giocatore: nota di cuoio sigillata */
+.msg-user{
+  align-self: flex-end;
+  background: linear-gradient(160deg, #6e4827, var(--leather));
+  color: var(--leather-fg);
+  border: 1px solid var(--gold-dk);
+  border-radius: 15px 15px 3px 15px;
+  padding: 10px 16px;
+  margin: 6px 26px 6px auto;
+  max-width: 72%;
+  width: fit-content;
+  font-size: 16px;
+  box-shadow: 0 3px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,220,160,0.18);
+}
+/* sistema: targhetta */
+.msg-system{
+  align-self: center;
+  background: rgba(255,255,255,0.35);
+  border: 1px dashed var(--gold-dk);
+  color: var(--ink-soft);
+  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin: 9px auto;
+  max-width: 620px;
+  text-align: center;
+  font-style: italic;
+}
+.msg-error{
+  align-self: center;
+  background: rgba(158,43,43,0.12);
+  border: 1px solid var(--danger);
+  color: var(--burgundy);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin: 9px auto;
+  max-width: 620px;
+  font-weight: 600;
+}
+.msg strong{ color: var(--burgundy); font-weight: 700; }
+.msg em{ color: var(--ink-soft); }
+.msg code{
+  background: rgba(120,82,28,0.16);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--burgundy);
+}
+.msg pre{
+  background: var(--stone);
+  border: 1px solid var(--gold-dk);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--gold-lt);
+  margin: 8px 0;
+}
+.msg pre code{ background: transparent; padding: 0; color: var(--gold-lt); }
+.msg h1, .msg h2, .msg h3{
+  font-family: var(--font-display);
+  margin: 16px 0 8px;
+  font-weight: 700;
+  color: var(--wood-dk);
+}
+.msg h1{ font-size: 21px; }
+.msg h2{ font-size: 18px; border: none; text-align: left; padding: 0; }
+.msg h2::after{ content: none; }
+.msg h3{ font-size: 16px; border: none; text-transform: none; letter-spacing: 0; }
+.msg ul, .msg ol{ margin: 6px 0; padding-left: 26px; }
+.msg li{ margin: 2px 0; }
+.msg blockquote{
+  border-left: 3px solid var(--gold-dk);
+  margin: 8px 0;
+  padding: 6px 14px;
+  color: var(--ink-soft);
+  background: rgba(120,82,28,0.10);
+  font-style: italic;
+}
+
+.typing{
+  padding: 8px 26px;
+  color: var(--ink-mute);
+  font-size: 12.5px;
+  font-style: italic;
+  font-family: var(--font-serif);
+  height: 30px;
+  visibility: hidden;
+  display: flex; align-items: center; gap: 9px;
+  max-width: 780px;
+  margin: 0 auto;
+  width: 100%;
+}
+.typing.on{ visibility: visible; }
+.typing::before{
+  content: '🪶';
+  font-style: normal;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse{
+  0%, 100% { opacity: 0.35; transform: scale(0.85) rotate(-8deg); }
+  50%      { opacity: 1;    transform: scale(1.12) rotate(8deg); }
+}
+
+.chat-form{
+  display: flex;
+  border-top: 2px solid var(--gold-dk);
+  padding: 16px 26px;
+  gap: 10px;
+  max-width: 780px;
+  margin: 0 auto;
+  width: 100%;
+  align-items: flex-end;
+  background: rgba(120,82,28,0.10);
+}
+.chat-form input{
+  flex: 1;
+  background: #fbf3da;
+  border: 1px solid var(--gold-dk);
+  padding: 12px 17px;
+  font-size: 14.5px;
+  border-radius: 22px;
+}
+.chat-form input:focus{
+  border-color: var(--gold-dk);
+  box-shadow: inset 0 1px 3px rgba(90,60,20,0.2), 0 0 0 3px var(--gold-glow);
+}
+.chat-form button{
+  padding: 0;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--gold-lt), var(--gold-dk));
+  color: #2a1b05;
+  border: 1px solid var(--wood-dk);
+  font-size: 17px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 7px rgba(0,0,0,0.5);
+}
+.chat-form button:hover:not(:disabled){
+  background: linear-gradient(180deg, #faecb8, var(--gold));
+}
+.chat-form button:disabled{
+  background: var(--parch-3);
+  color: var(--ink-mute);
+}
+
+/* ── mappa — finestra sul dungeon: canvas pixel-art 20×20 a 16 colori */
+/* Telaio in legno scuro con filetto d'oro, come una carta del DM.     */
+.map{
+  position: relative;
+  width: 400px;                        /* dimensione FISSA: non varia mai */
+  height: 400px;
+  margin: 0 auto;
+  display: block;
+  background: #160f08;
+  border: 7px solid var(--wood-dk);    /* telaio in legno scuro */
+  padding: 5px;
+  border-radius: 6px;
+  overflow: hidden;
+  image-rendering: pixelated;
+  box-shadow: inset 0 0 0 2px var(--gold-dk),     /* filetto d'oro */
+              inset 0 0 22px rgba(0,0,0,0.72),     /* vignettatura */
+              0 3px 10px rgba(0,0,0,0.55);
+}
+/* il canvas pixel-art: 200×200 px interni, scalato a celle nette */
+.map-canvas{
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+/* griglia sottile: delinea la tabella 20×20 di quadratini sul canvas */
+.map::after{
+  content: "";
+  position: absolute; inset: 5px;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(0deg,  rgba(0,0,0,0.30) 0 1px,
+      transparent 1px calc(100% / 20)),
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.30) 0 1px,
+      transparent 1px calc(100% / 20));
+}
+.map.map-empty{
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  background: var(--parch-3);
+  color: var(--ink-mute);
+  font-size: 14px; letter-spacing: 1px;
+}
+.map.map-empty::after{ display: none; }
+/* la mappa col contenuto è cliccabile: si apre ingrandita */
+.map:not(.map-empty){ cursor: zoom-in; }
+.map:not(.map-empty):hover{
+  box-shadow: inset 0 0 0 2px var(--gold),
+              inset 0 0 22px rgba(0,0,0,0.6),
+              0 0 14px var(--gold-glow);
+}
+
+/* ── finestra mappa ingrandita (click sul pannello) ────────────────── */
+/* Finestra larga ≥ 2/3 della pagina; la mappa è disegnata GRANDE dentro
+   un riquadro scorrevole con DUE barre, per spostarsi su tutta l'area. */
+/* doppia classe: la specificità deve battere `.modal-box` (definita dopo) */
+.modal-box.modal-map-box{
+  width: 74vw;                 /* ≥ 2/3 della pagina */
+  max-width: 96vw;
+  max-height: 96vh;
+  padding: 16px 20px;
+}
+.modal-box.modal-map-box h2{ margin: 0 0 8px; }
+.map-big-layout{
+  display: flex;
+  gap: 18px;
+  align-items: stretch;
+}
+/* riquadro scorrevole: overflow:scroll → SEMPRE due barre di scorrimento */
+.map-big{
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 80vh;
+  overflow: scroll;
+  background: #160f08;
+  border: 8px solid var(--wood-dk);
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 3px var(--gold-dk),
+              0 4px 14px rgba(0,0,0,0.5);
+}
+.map-big.map-empty{
+  display: flex; align-items: center; justify-content: center;
+  color: var(--parch-3); font-family: var(--font-display);
+  overflow: hidden;
+}
+/* la mappa disegnata: grande e fissa, eccede il riquadro → si scorre */
+.map-big .map-canvas{
+  width: 1800px;
+  height: 1800px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+}
+.map-big-side{
+  flex: 0 0 280px;
+  overflow-y: auto;
+}
+.map-big-side h3{
+  margin: 4px 0 7px;
+  font-family: var(--font-display);
+  color: var(--burgundy);
+}
+.legend-grid-big span{ font-size: 13px; }
+.legend-grid-big .lg{ width: 19px; height: 19px; font-size: 13px; }
+
+/* ── disegno della scena — illustrazione pixel-art 32×32 ───────────── */
+/* Quadro incorniciato: ciò che i personaggi vedono ADESSO.            */
+.scene-panel{ margin-top: 6px; }
+.scene-panel.hidden{ display: none; }
+.scene-tag{
+  font-family: var(--font-serif);
+  font-size: 10px; font-weight: 400; font-style: italic;
+  letter-spacing: 0.4px;
+  color: var(--ink-mute);
+  text-transform: lowercase;
+}
+.scene-frame{
+  position: relative;
+  width: 400px;                        /* dimensione FISSA, come la mappa */
+  height: 400px;
+  margin: 0 auto;
+  background: #160f08;
+  border: 7px solid var(--wood-dk);
+  padding: 5px;
+  border-radius: 6px;
+  overflow: hidden;
+  image-rendering: pixelated;
+  box-shadow: inset 0 0 0 2px var(--gold-dk),
+              0 3px 10px rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  color: var(--ink-mute);
+  font-size: 13px; letter-spacing: 1px;
+}
+.scene-canvas{
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+/* vignettatura calda: dà profondità all'illustrazione */
+.scene-frame::after{
+  content: "";
+  position: absolute; inset: 5px;
+  pointer-events: none;
+  box-shadow: inset 0 0 34px rgba(22,9,0,0.62);
+}
+.scene-caption{
+  margin: 8px 4px 2px;
+  text-align: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+
+/* ── tile della griglia — pixel art a toni di verde ──────────────── */
+.tile{
+  display: flex; align-items: center; justify-content: center;
+  /* la dimensione della cella la decide la griglia (1fr × 1fr): così la
+     mappa intera ci sta sempre. min-*:0 lascia rimpicciolire le celle. */
+  min-width: 0; min-height: 0;
+  border-radius: 0;
+  font-size: clamp(7px, 1.7vw, 16px);
+  line-height: 1;
+  position: relative;
+  color: #0f380f;
+  image-rendering: pixelated;
+}
+.t-fog{ background: #0f380f; }
+.t-wall{
+  background: #0f380f;
+  box-shadow: inset 2px 2px 0 #306230,
+              inset -2px -2px 0 #000;
+}
+.t-floor{ background: #9bbc0f; }
+/* tile speciali: tutti nei 4 verdi Game Boy, distinti da glifo e tono */
+.t-start, .t-exit, .t-combat, .t-explore,
+.t-social, .t-door, .t-stair, .t-water, .t-trap,
+.t-tree, .t-grass, .t-rock, .t-fire, .t-bridge, .t-chest{
+  background: #9bbc0f;
+  color: #0f380f;
+}
+.t-start  { background: #9bbc0f; }
+.t-exit   {
+  background: #9bbc0f;
+  animation: tile-exit 1s steps(1) infinite;
+}
+.t-combat { background: #306230; color: #9bbc0f; }
+.t-explore{ background: #8bac0f; }
+.t-social { background: #8bac0f; }
+.t-door   { background: #9bbc0f; }
+.t-stair  { background: #9bbc0f; }
+.t-water  {
+  background: repeating-linear-gradient(90deg,
+    #306230 0 4px, #0f380f 4px 8px);
+  color: #9bbc0f;
+}
+.t-trap   { background: #9bbc0f; }
+.t-tree   { background: #8bac0f; }
+.t-grass  { background: #8bac0f; }
+.t-rock   { background: #8bac0f; }
+.t-fire   {
+  background: #9bbc0f;
+  animation: tile-exit 0.5s steps(1) infinite;
+}
+.t-bridge { background: #8bac0f; }
+.t-chest  { background: #9bbc0f; }
+
+/* il party: cella scura che lampeggia a 2 frame (stile sprite DMG) */
+.t-party{
+  background: #0f380f;
+  color: #9bbc0f;
+  z-index: 2;
+  animation: party-pulse 0.7s steps(1) infinite;
+}
+@keyframes party-pulse{
+  0%, 100%{ background: #0f380f; color: #9bbc0f; }
+  50%     { background: #306230; color: #9bbc0f; }
+}
+@keyframes tile-exit{
+  0%, 100%{ filter: none; }
+  50%     { filter: invert(1); }
+}
+
+/* ── legenda mappa ───────────────────────────────────────────────── */
+.map-legend{
+  margin-top: 9px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  background: rgba(255,255,255,0.32);
+  border: 1px solid var(--parch-edge);
+  border-left: 3px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+}
+.map-legend summary{
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--wood-dk);
+}
+.legend-grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 12px;
+  margin-top: 8px;
+}
+.legend-grid span{ display: flex; align-items: center; gap: 6px; }
+.lg{
+  width: 17px; height: 17px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-style: normal; font-size: 12px;
+  border-radius: 0; flex-shrink: 0;
+  background: #6e5536; color: #160f08;
+  image-rendering: pixelated;
+}
+/* swatch della legenda: tinte della palette fantasy a 16 colori */
+.lg-party  { background: #6e5536; color: #f2cf52; }
+.lg-start  { background: #c8a86a; color: #160f08; }
+.lg-exit   { background: #f2cf52; color: #160f08; }
+.lg-combat { background: #9c2828; color: #f0e4c8; }
+.lg-explore{ background: #3f7da6; color: #f0e4c8; }
+.lg-social { background: #c8a86a; color: #160f08; }
+.lg-door   { background: #7a4a22; color: #f2cf52; }
+.lg-trap   { background: #9c2828; color: #f0e4c8; }
+.lg-water  { background: repeating-linear-gradient(90deg,#3f7da6 0 3px,#1e3a52 3px 6px);
+             color: #f0e4c8; }
+.lg-stair  { background: #4a3522; color: #9c8050; }
+.lg-wall   { background: #2a1f16; box-shadow: inset 2px 2px 0 #6e5536; }
+.lg-fog    { background: #14100c; }
+.lg-tree   { background: #2e4d22; color: #5a8c3a; }
+.lg-grass  { background: #5a8c3a; color: #2e4d22; }
+.lg-rock   { background: #9c8050; color: #4a3522; }
+.lg-fire   { background: #e07b2a; color: #f2cf52; }
+.lg-bridge { background: #7a4a22; color: #c8a86a; }
+.lg-chest  { background: #7a4a22; color: #f2cf52; }
+.zone-info{
+  font-size: 12.5px;
+  margin-top: 11px;
+  color: var(--ink-soft);
+  background: rgba(255,255,255,0.34);
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--parch-edge);
+  border-left: 3px solid var(--gold-dk);
+}
+.zone-info > div{ margin: 2px 0; }
+.zone-info strong{ color: var(--burgundy); }
+
+.rolls-log{ list-style: none; padding: 0; margin: 0; font-size: 10.5px; }
+.rolls-log li{
+  background: rgba(255,255,255,0.4);
+  border: 1px solid var(--parch-edge);
+  border-left: 3px solid var(--gold-dk);
+  padding: 3px 8px;
+  margin-bottom: 3px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+.rolls-log li strong{ color: var(--burgundy); }
+.rolls-log li.crit{ border-left-color: var(--emerald); background: rgba(63,125,79,0.14); }
+.rolls-log li.fumble{ border-left-color: var(--burgundy); background: rgba(140,47,47,0.12); }
+
+/* ── modali — pergamene incorniciate ─────────────────────────────── */
+.modal{
+  position: fixed; inset: 0;
+  background: rgba(20,11,3,0.78);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  animation: fade-in 0.16s ease-out;
+}
+@keyframes fade-in{ from{ opacity: 0; } to{ opacity: 1; } }
+.modal.hidden{ display: none; }
+.modal-box{
+  position: relative;
+  background:
+    radial-gradient(ellipse 120% 60% at 50% 0%, #f9edca, transparent 70%),
+    var(--parch-2);
+  color: var(--ink);
+  border: 2px solid var(--wood-dk);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+  width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow:
+    0 20px 56px rgba(0,0,0,0.75),
+    inset 0 0 0 5px var(--parch-2),
+    inset 0 0 0 6.5px var(--gold-dk);
+}
+.modal-large{ width: 820px; }
+.modal-close{
+  position: absolute; top: 13px; right: 13px;
+  width: 30px; height: 30px; padding: 0;
+  background: linear-gradient(180deg, #ab423b, var(--burgundy));
+  border: 1px solid var(--wood-dk);
+  color: var(--parch);
+  font-size: 15px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-close:hover{ background: linear-gradient(180deg, #c4574f, #9e2b2b); color: #fff; }
+.modal h2{
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--burgundy);
+  text-align: center;
+  margin: 0 0 14px;
+  padding-bottom: 11px;
+  letter-spacing: 0.6px;
+  border-bottom: 2px solid var(--gold-dk);
+}
+.modal p{ color: var(--ink-soft); font-size: 13.5px; }
+.modal .note{
+  background: rgba(120,82,28,0.13);
+  border-left: 3px solid var(--gold-dk);
+  padding: 10px 13px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  border-radius: var(--radius-sm);
+  margin: 12px 0;
+  font-style: italic;
+}
+.modal-actions{
+  display: flex; gap: 8px; margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+/* ── chars form ──────────────────────────────────────────────────── */
+.chars-form{ display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.char-row{
+  display: grid;
+  grid-template-columns: repeat(6, 1fr) 80px 32px;
+  gap: 6px;
+  align-items: end;
+  background: rgba(255,255,255,0.4);
+  padding: 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gold-dk);
+}
+.char-row label{ margin: 0; font-size: 10px; }
+.char-row select, .char-row input{ padding: 5px 8px; font-size: 12px; }
+.char-row .remove{
+  background: linear-gradient(180deg, #ab423b, var(--burgundy));
+  border: 1px solid var(--wood-dk);
+  color: var(--parch);
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  height: 31px;
+}
+.char-row .remove:hover{ background: linear-gradient(180deg, #c4574f, #9e2b2b); color: #fff; }
+
+.chars-preview{ margin-top: 18px; }
+.sheet-block{
+  position: relative;
+  background:
+    radial-gradient(ellipse 120% 70% at 50% 0%, #f8ecca, transparent 75%),
+    var(--parch);
+  border: 1px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 11px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  box-shadow: inset 0 0 0 3px var(--parch), inset 0 0 0 4px var(--gold-dk);
+}
+.sheet-block h3{
+  font-family: var(--font-display);
+  margin: 0 0 9px;
+  color: var(--burgundy);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  border: none;
+}
+.sheet-block strong{ color: var(--wood-dk); }
+.sheet-stats{
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 7px;
+  margin: 11px 0;
+}
+.sheet-stat{
+  background: linear-gradient(180deg, var(--parch), var(--parch-3));
+  border: 1px solid var(--gold-dk);
+  padding: 7px 4px;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+}
+.sheet-stat-name{ font-size: 9px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.5px; }
+.sheet-stat-val{ font-family: var(--font-display); font-size: 20px; color: var(--burgundy); font-weight: 700; }
+.sheet-stat-mod{ font-size: 11px; color: var(--ink-soft); }
+
+/* caratteristiche fisiche */
+.sheet-phys{
+  background: rgba(120,82,28,0.10);
+  border: 1px solid var(--parch-edge);
+  border-left: 3px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  margin: 9px 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.sheet-phys > div{ margin: 2px 0; }
+.sheet-phys strong{ color: var(--burgundy); }
+
+/* ── bestiario ───────────────────────────────────────────────────── */
+.bestiary-list{
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 9px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.monster-card{
+  background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(198,158,88,0.2));
+  border: 1px solid var(--gold-dk);
+  padding: 11px 13px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+  transition: transform 0.13s, box-shadow 0.13s;
+}
+.monster-card:hover{ transform: translateY(-2px); box-shadow: 0 7px 15px rgba(0,0,0,0.42); }
+.monster-card .mn{ font-family: var(--font-display); font-weight: 700; color: var(--burgundy); }
+.monster-card .mi{ color: var(--ink-mute); font-size: 11px; margin-top: 4px; }
+
+#setup-result{ margin-top: 12px; font-size: 12.5px; font-weight: 600; }
+#setup-result.error{ color: var(--burgundy); }
+#setup-result.ok{ color: var(--emerald); }
+
+/* ════════════════════════════════════════════════════════════════════
+   Debug modal
+   ════════════════════════════════════════════════════════════════════ */
+.debug-tabs{ display: flex; gap: 6px; margin: 12px 0 0; }
+.debug-tab{ font-size: 12px; }
+.debug-tab.active{
+  background: linear-gradient(180deg, #ecbf52, var(--gold-dk));
+  color: #2a1b05;
+}
+.debug-pane{
+  margin-top: 14px;
+  max-height: 58vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.debug-pane.hidden{ display: none; }
+.debug-entry{
+  background: rgba(255,255,255,0.4);
+  border: 1px solid var(--parch-edge);
+  border-left: 3px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.debug-entry.ok{ border-left-color: var(--emerald); }
+.debug-entry.err{ border-left-color: var(--burgundy); }
+.debug-head{
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.debug-method{ color: var(--burgundy); font-weight: 700; }
+.debug-url{ color: var(--ink); word-break: break-all; }
+.debug-status{ color: var(--ink-soft); }
+.debug-ts{ color: var(--ink-mute); margin-left: auto; }
+.debug-body{
+  background: var(--stone);
+  border: 1px solid var(--gold-dk);
+  border-radius: 4px;
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gold-lt);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 170px;
+  overflow-y: auto;
+}
+.debug-body.err{ color: #f0a59e; }
+
+/* ════════════════════════════════════════════════════════════════════
+   Riquadro dadi — il giocatore lancia i propri tiri
+   ════════════════════════════════════════════════════════════════════ */
+.dice-box{
+  position: relative;
+  background:
+    radial-gradient(ellipse 120% 70% at 50% 0%, #f8ecca, transparent 75%),
+    var(--parch);
+  border: 1px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 9px;
+  display: flex; flex-direction: column; gap: 7px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.dice-box.your-turn{
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold), 0 0 20px var(--gold-glow);
+}
+.dice-turn{
+  font-size: 10px;
+  text-align: center;
+  color: var(--ink-mute);
+  font-family: var(--font-mono);
+}
+.dice-turn.active{
+  color: #2a1b05;
+  background: linear-gradient(180deg, var(--gold-lt), var(--gold));
+  padding: 4px 7px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.3px;
+  animation: turn-pulse 1.8s ease-in-out infinite;
+}
+@keyframes turn-pulse{
+  0%, 100% { box-shadow: 0 0 0 0 var(--gold-glow); }
+  50%      { box-shadow: 0 0 14px 3px var(--gold-glow); }
+}
+.dice-grid{
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.die{
+  padding: 6px 0;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  background: linear-gradient(160deg, var(--parch), var(--parch-3));
+  border: 1px solid var(--gold-dk);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 2px 4px rgba(0,0,0,0.3);
+}
+.die:hover:not(:disabled){
+  background: linear-gradient(160deg, var(--gold-lt), var(--gold));
+  color: var(--wood-dk);
+}
+.die:active:not(:disabled){ animation: roll-bounce 0.4s ease; }
+@keyframes roll-bounce{
+  0%   { transform: rotate(0) scale(1); }
+  30%  { transform: rotate(-13deg) scale(1.14); }
+  60%  { transform: rotate(11deg) scale(1.05); }
+  100% { transform: rotate(0) scale(1); }
+}
+/* dado richiesto dal DM per il tiro del giocatore */
+.die.requested{
+  background: linear-gradient(160deg, var(--gold-lt), var(--gold));
+  color: var(--wood-dk);
+  border-color: var(--gold);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6),
+              0 0 0 1px var(--gold), 0 0 12px var(--gold-glow);
+  animation: turn-pulse 1.8s ease-in-out infinite;
+}
+.die-d20.requested{
+  background: linear-gradient(160deg, #c4574f, #9e2b2b);
+  color: var(--gold-lt);
+}
+.die-d20{
+  grid-column: span 2;
+  background: linear-gradient(160deg, #ab423b, var(--burgundy));
+  border-color: var(--gold);
+  color: var(--gold-lt);
+}
+.die-d20:hover:not(:disabled){
+  background: linear-gradient(160deg, #c4574f, #9e2b2b);
+  color: var(--gold-lt);
+}
+.dice-opts{ display: flex; flex-wrap: wrap; gap: 5px 8px; align-items: center; }
+.dice-opt{
+  margin: 0;
+  font-size: 10px;
+  color: var(--ink-soft);
+  display: flex; align-items: center; gap: 4px;
+}
+.dice-opt input[type="number"]{ width: 44px; padding: 2px 5px; font-size: 11px; }
+.dice-check input{ width: auto; }
+.dice-result{
+  text-align: center;
+  background: var(--stone);
+  border: 2px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  min-height: 44px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.7);
+}
+.dice-result.empty{ color: var(--ink-mute); font-style: italic; font-size: 11px; background: rgba(34,20,9,0.12); border-style: dashed; box-shadow: none; }
+.dice-result.rolling{ color: var(--gold); font-size: 17px; animation: pulse 0.7s ease-in-out infinite; }
+.dice-total{
+  font-family: var(--font-display);
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--gold-lt);
+  text-shadow: 0 0 12px var(--gold-glow);
+}
+.dice-detail{ font-family: var(--font-mono); font-size: 10px; color: #c9a86a; }
+.dice-result.crit{ border-color: var(--emerald); animation: crit-flash 0.9s ease-in-out 2; }
+.dice-result.crit .dice-total{ color: #9ff0a6; text-shadow: 0 0 14px rgba(63,125,79,0.8); }
+.dice-result.fumble{ border-color: var(--danger); }
+.dice-result.fumble .dice-total{ color: #f0a59e; text-shadow: 0 0 14px rgba(158,43,43,0.8); }
+.dice-result.err{ color: #f0a59e; font-size: 12px; }
+@keyframes crit-flash{
+  0%, 100% { box-shadow: inset 0 0 18px rgba(0,0,0,0.7); }
+  50%      { box-shadow: inset 0 0 18px rgba(0,0,0,0.7), 0 0 26px var(--emerald); }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Incantesimi e slot — card giocatore + scheda
+   ════════════════════════════════════════════════════════════════════ */
+.pc-spells{
+  margin-top: 10px;
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+}
+.pc-spell-meta{ color: var(--ink-mute); font-style: italic; }
+.slot-grp{
+  display: inline-flex; align-items: center; gap: 3px;
+  background: rgba(120,82,28,0.12);
+  border: 1px solid var(--parch-edge);
+  border-radius: 9px;
+  padding: 1px 7px;
+}
+.slot-grp b{ color: var(--burgundy); font-size: 9.5px; }
+.slot-pips{ letter-spacing: 1px; color: var(--gold-dk); font-size: 10px; }
+
+/* sezione incantesimi nelle schede sola-lettura */
+.sheet-spells{
+  background: rgba(120,82,28,0.10);
+  border: 1px solid var(--parch-edge);
+  border-left: 3px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  margin: 9px 0;
+  font-size: 12px;
+}
+.sheet-spells > div{ margin: 2px 0; }
+.sheet-spells strong{ color: var(--burgundy); }
+
+/* ════════════════════════════════════════════════════════════════════
+   Editor scheda — modifica parametri, equipaggiamento, incantesimi
+   ════════════════════════════════════════════════════════════════════ */
+.sheet-editor h3{
+  font-family: var(--font-display);
+  margin: 0 0 12px;
+  color: var(--burgundy);
+  font-size: 16px; font-weight: 700;
+  text-transform: none; letter-spacing: 0;
+  border: none;
+}
+.sheet-editor h4{
+  font-family: var(--font-display);
+  font-size: 12px; font-weight: 700;
+  color: var(--wood-dk);
+  text-transform: uppercase; letter-spacing: 1px;
+  margin: 18px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--gold-dk);
+}
+.sheet-editor textarea{ font-size: 12.5px; resize: vertical; }
+.se-row{ display: flex; flex-wrap: wrap; gap: 10px; }
+.se-row label{ flex: 1; min-width: 92px; margin: 6px 0; }
+.se-row input{ margin-top: 3px; }
+
+.se-stats{
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 7px;
+}
+.se-stat{
+  background: linear-gradient(180deg, var(--parch), var(--parch-3));
+  border: 1px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 7px 5px;
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+}
+.se-stat-name{
+  font-size: 9px; color: var(--ink-mute);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.se-stat-score{
+  text-align: center;
+  padding: 4px 2px;
+  margin: 4px 0 2px;
+  font-family: var(--font-display);
+  font-size: 17px; font-weight: 700;
+  color: var(--burgundy);
+}
+.se-stat-mod{ font-size: 11px; color: var(--ink-soft); }
+
+.se-spellmeta{
+  font-size: 12px; color: var(--ink-soft);
+  background: rgba(120,82,28,0.10);
+  border-left: 3px solid var(--gold-dk);
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+.se-spellmeta strong{ color: var(--burgundy); }
+.se-hint{ color: var(--ink-mute); font-style: italic; font-size: 10.5px; }
+.se-label{
+  font-size: 12px; font-weight: 600;
+  color: var(--ink-soft);
+  margin: 12px 0 6px;
+}
+.se-slots{ display: flex; flex-direction: column; gap: 6px; }
+.se-slot{
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  background: rgba(255,255,255,0.4);
+  border: 1px solid var(--parch-edge);
+  border-left: 3px solid var(--gold-dk);
+  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+}
+.se-slot-lv{
+  font-family: var(--font-display);
+  font-weight: 700; color: var(--burgundy);
+  min-width: 58px;
+}
+.se-slot label{
+  margin: 0; display: flex; align-items: center; gap: 6px;
+  font-size: 11px;
+}
+.se-slot input{ width: 58px; padding: 4px 6px; text-align: center; }
+
+/* tasto «Lancia» — consuma uno slot incantesimo */
+.sp-cast{
+  margin-left: auto;
+  padding: 5px 12px;
+  font-size: 11px; font-weight: 700;
+  font-family: var(--font-display);
+  background: linear-gradient(160deg, #ab423b, var(--burgundy));
+  border: 1px solid var(--gold-dk);
+  color: var(--gold-lt);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 4px rgba(0,0,0,0.3);
+}
+.sp-cast:hover:not(:disabled){ background: linear-gradient(160deg, #c4574f, #9e2b2b); }
+.sp-cast:disabled{ opacity: 0.4; cursor: not-allowed; filter: grayscale(0.6); }
+
+/* tasto riposo lungo */
+.se-rest{
+  display: block; width: 100%;
+  margin: 8px 0 4px;
+  padding: 8px;
+  font-size: 11.5px; font-weight: 700;
+  background: linear-gradient(180deg, #2c3e63, #1c2a47);
+  border: 1px solid var(--gold-dk);
+  color: var(--gold-lt);
+  border-radius: var(--radius-sm);
+}
+.se-rest:hover{ background: linear-gradient(180deg, #38507e, #243458); }
+
+/* etichetta dei campi di modifica incantesimi */
+.se-edit-lbl{ display: block; margin: 6px 0 14px; font-size: 11px; color: var(--ink-mute); }
+
+/* liste incantesimi: nome + descrizione */
+.sp-ul{ list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.sp-row{
+  background: rgba(255,255,255,0.45);
+  border: 1px solid var(--parch-edge);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  font-size: 12px;
+}
+.sp-row b{ color: var(--burgundy); }
+.sp-lv{
+  display: inline-block;
+  background: var(--burgundy); color: var(--gold-lt);
+  font-size: 9px; font-weight: 700;
+  padding: 1px 5px; border-radius: 8px;
+  margin-right: 6px; vertical-align: middle;
+}
+.sp-desc{ color: var(--ink-soft); font-size: 11px; margin-top: 2px; line-height: 1.4; }
+.sp-group{ margin: 7px 0; }
+.sp-group strong{ color: var(--burgundy); }
+.sp-slotline{ margin-top: 6px; }
+
+.se-actions{
+  display: flex; align-items: center; gap: 14px;
+  margin-top: 18px; padding-top: 14px;
+  border-top: 2px solid var(--gold-dk);
+}
+.se-msg{ font-size: 12.5px; font-weight: 600; }
+.se-msg.ok{ color: var(--emerald); }
+.se-msg.err{ color: var(--burgundy); }

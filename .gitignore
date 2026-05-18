@@ -1,0 +1,42 @@
+# ─── Segreti / chiavi API ────────────────────────────────────────────
+.env
+.env.*
+claudevv/
+.claude/
+
+# ─── Stato di gioco generato a runtime ───────────────────────────────
+runtime/*.json
+avventura.txt
+
+# ─── Profili browser Playwright ──────────────────────────────────────
+.browser_profiles/
+
+# ─── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Cache / IDE / OS ────────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ─── File temporanei di test ─────────────────────────────────────────
+_t.js
+_test_*.py
+*.bak
+*.log
