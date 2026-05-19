@@ -1,7 +1,6 @@
-[README.md](https://github.com/user-attachments/files/27964340/README.md)
-# 🎲 Tavolo D_IA_D — Dungeon Master AI
+# 🎲 Tavolo — Dungeon Master AI
 
-Applicazione web Flask che simula un **Dungeon Master AI**.
+Applicazione web Flask che simula un **Dungeon Master AI **.
 Il DM è pilotato da un'IA conversazionale: l'app guida una chat IA pubblica
 (default [DeepSeek](https://chat.deepseek.com/)) tramite browser automatizzato,
 con generazione di schede personaggio, mappa ASCII, bestiario, tiri di dado,

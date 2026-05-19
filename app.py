@@ -1,6 +1,4 @@
 """
-Tavolo Dangeon MAaster — server Flask sottile.
-
 Routing + collante. Tutta la logica vive in:
   dnd/   — regole, schede, bestiario, stato
   dm/    — prompt DM, webchat Playwright, parser tag
@@ -569,6 +567,22 @@ def api_chat():
                 "(mappa e current_position compresi).")
             return "\n".join(lines)
 
+        def _format_cast_feedback(failed: list[dict]) -> str:
+            """Avviso al DM: incantesimi che NON possono essere lanciati
+            (slot esauriti o PG non incantatore). Il DM deve rinarrare la
+            scena senza di essi."""
+            lines = ["[Sistema] INCANTESIMO NON LANCIABILE — slot non disponibili:"]
+            for f in failed:
+                lines.append(
+                    f"- {f.get('by') or '?'}: «{f.get('spell') or '?'}» "
+                    f"(liv. {f.get('level')}) — {f.get('detail')}")
+            lines.append(
+                "Questi incantesimi NON sono stati lanciati e NON hanno "
+                "avuto effetto. RINARRA la scena senza di essi: il PG è a "
+                "corto di slot e deve agire altrimenti (trucchetto, arma, "
+                "altra azione). Aggiorna mappa e stato di conseguenza.")
+            return "\n".join(lines)
+
         def _dm_exchange(message_text: str,
                          with_extras: bool = False) -> tuple[str, list, list]:
             """Un giro col DM: invia `message_text`, risolve i ROLL_REQ,
@@ -584,7 +598,11 @@ def api_chat():
             if with_extras:
                 reminders += "\n\n" + prompt_mod.music_reminder()
                 reminders += "\n\n" + prompt_mod.sprite_reminder()
-                reminders += "\n\n" + prompt_mod.scene_reminder()
+            # slot incantesimo residui: appesi a OGNI messaggio così il DM
+            # sa cosa ogni PG può ancora lanciare (e non spende slot esauriti)
+            slot_rem = prompt_mod.spell_slot_reminder(game_state)
+            if slot_rem:
+                reminders += "\n\n" + slot_rem
 
             briefed = webchat.is_briefed()
             if briefed:
@@ -641,9 +659,10 @@ def api_chat():
             map_block   = parser.extract_map(with_rolls)
             music_upds  = parser.extract_music(with_rolls)
             sprite_upds = parser.extract_sprites(with_rolls)
-            scene_upd   = parser.extract_scene(with_rolls)
+            cast_upds   = parser.extract_spell_casts(with_rolls)
 
             map_report = None
+            cast_report: list[dict] = []
             with _state_lock:
                 if state_upd:
                     parser.apply_state_update(game_state, state_upd)
@@ -651,19 +670,37 @@ def api_chat():
                     parser.apply_char_updates(game_state, char_upds)
                     for p in game_state.get("players", []):
                         char_mod.upgrade_sheet(p.get("sheet") or {})
-                # ── MAPPA: ricalcolata a OGNI messaggio ───────────────
-                # La posizione del party ha UNA sola fonte di verità:
-                # game_state["current_position"]. map_full è la mappa base
-                # SENZA marker @ — il @ lo disegna apply_fog nel render.
+                # ── INCANTESIMI: scala gli slot dei lanci dichiarati dal DM.
+                # Va DOPO i CHAR_UPDATE (che potrebbero rigenerare gli slot).
+                cast_report = parser.apply_spell_casts(game_state, cast_upds)
+                cast_fail = [c for c in cast_report if not c.get("ok")]
+                if cast_fail:
+                    game_state.setdefault("pending_dm_notes", []).append(
+                        _format_cast_feedback(cast_fail))
+                # ── MAPPA: una sola mappa COERENTE per tutta l'avventura.
+                # Il DM tende a ridisegnare la mappa diversa a ogni turno
+                # (muri che si spostano) → mappa incoerente. Quindi la
+                # mappa base (map_full) si fissa UNA volta — alla prima
+                # generazione o su rigenerazione esplicita (retry) — e poi
+                # NON cambia più. Dai blocchi MAP successivi leggiamo SOLO
+                # la posizione del party (@); il @ lo ridisegna apply_fog.
                 if map_block:
-                    # nuova mappa dal DM: FORZALA a 20×20, estrai la
-                    # posizione dal marker @, poi togli il @ dalla mappa
-                    # base (la posizione vive in current_position).
                     norm = state_mod.normalize_map(map_block, 20)
                     at = state_mod.find_position(norm, "@")
-                    game_state["map_full"] = norm.replace("@", ".")
-                    if at:
-                        game_state["current_position"] = [at[0], at[1]]
+                    if not game_state.get("map_full") or retry:
+                        # prima mappa (o rigenerazione): adottala come base
+                        game_state["map_full"] = norm.replace("@", ".")
+                        if at:
+                            game_state["current_position"] = [at[0], at[1]]
+                    elif at:
+                        # mappa già fissata: usa il blocco solo per spostare
+                        # @, e solo se cade su una cella calpestabile della
+                        # mappa REALE (non un muro) — così resta coerente.
+                        mf = game_state["map_full"].splitlines()
+                        x, y = at
+                        if (0 <= y < len(mf) and 0 <= x < len(mf[y])
+                                and mf[y][x] != "#"):
+                            game_state["current_position"] = [x, y]
                 # Se NON arriva una mappa nuova vale la posizione aggiornata
                 # dallo STATE_UPDATE: apply_fog ridisegna il @ lì, quindi la
                 # mappa si aggiorna comunque a ogni messaggio.
@@ -685,8 +722,6 @@ def api_chat():
                     parser.apply_music_update(game_state, music_upds)
                 if sprite_upds:
                     parser.apply_sprites(game_state, sprite_upds)
-                if scene_upd:
-                    parser.apply_scene(game_state, scene_upd)
                 # Persisti le schede su personaggi.json: XP, HP, livello e
                 # ogni modifica del DM restano allineati anche nelle schede
                 # personaggio (non solo nello stato di gioco).
@@ -704,14 +739,14 @@ def api_chat():
                 "rolls":   roll_results,
                 "map":     map_report,
                 "sprites": sorted(sprite_upds.keys()),
-                "scene":   bool(scene_upd),
+                "casts":   cast_report,
             })
             if len(_debug["exchanges"]) > 20:
                 _debug["exchanges"].pop(0)
 
             print(f"[DM] {len(display_text)} chars · {len(roll_results)} tiri IA "
-                  f"· {len(pending_rolls)} tiri attesi · {len(sprite_upds)} sprite",
-                  flush=True)
+                  f"· {len(pending_rolls)} tiri attesi · {len(sprite_upds)} sprite "
+                  f"· {len(cast_report)} incantesimi", flush=True)
             print(f"{'═'*70}\n", flush=True)
             return display_text, roll_results, pending_rolls
 
@@ -723,6 +758,10 @@ def api_chat():
                 with _state_lock:
                     feedback = game_state.get("pending_roll_feedback") or []
                     game_state["pending_roll_feedback"] = []
+                    # note di sistema in sospeso (es. slot incantesimo
+                    # esauriti rilevati in un turno precedente)
+                    start_notes = game_state.get("pending_dm_notes") or []
+                    game_state["pending_dm_notes"] = []
                 first_msg = f"Giocatore: {user_message}"
                 if retry:
                     first_msg += (
@@ -730,8 +769,11 @@ def api_chat():
                         "non è arrivata correttamente. Riemetti per intero "
                         "la scena, la mappa MAP_START…MAP_END (20×20) e il "
                         "<STATE_UPDATE>.]")
+                prefix = list(start_notes)
                 if feedback:
-                    first_msg = _format_roll_feedback(feedback) + "\n\n" + first_msg
+                    prefix.append(_format_roll_feedback(feedback))
+                if prefix:
+                    first_msg = "\n\n".join(prefix) + "\n\n" + first_msg
 
                 # cadenza extra (musica + sprite): ogni EXTRAS_EVERY
                 # messaggi del giocatore (il retry non conta).
@@ -750,14 +792,29 @@ def api_chat():
                 # SUBITO. Rimanda il risultato al DM perché DICHIARI
                 # l'esito, lo NARRI e PROSEGUA (poi chieda agli altri PG
                 # cosa fanno): così il DM completa il suo turno invece di
-                # fermarsi appeso al tiro. Il ciclo si ferma appena si
-                # attende un tiro UMANO (lo lancia il giocatore dal
-                # riquadro dadi) o dopo MAX_FOLLOWUPS turni.
+                # fermarsi appeso al tiro. Stesso meccanismo per le note di
+                # sistema (es. slot incantesimo esauriti: il DM rinarra).
+                # Il ciclo si ferma appena si attende un tiro UMANO (lo
+                # lancia il giocatore dal riquadro dadi) o dopo
+                # MAX_FOLLOWUPS turni.
                 steps = 0
-                while rolls and not pending and steps < MAX_FOLLOWUPS:
+                while steps < MAX_FOLLOWUPS:
+                    with _state_lock:
+                        notes = list(game_state.get("pending_dm_notes") or [])
+                    need_roll_fb = bool(rolls and not pending)
+                    use_notes = bool(notes and not pending)
+                    if not need_roll_fb and not use_notes:
+                        break
                     steps += 1
-                    display, rolls, pending = _dm_exchange(
-                        _format_roll_feedback(rolls))
+                    if use_notes:
+                        with _state_lock:
+                            game_state["pending_dm_notes"] = []
+                    parts = []
+                    if use_notes:
+                        parts.extend(notes)
+                    if need_roll_fb:
+                        parts.append(_format_roll_feedback(rolls))
+                    display, rolls, pending = _dm_exchange("\n\n".join(parts))
                     if display.strip():
                         result_q.put(("token", display))
 
@@ -977,7 +1034,7 @@ def main():
     else:
         print("[WEBCHAT] auto-start disabilitato (TAVOLO_NO_AUTOSTART=1)", flush=True)
 
-    print(f"⚔ Tavolo D&D 5.5e — {url}", flush=True)
+    print(f"⚔ Tavolo — {url}", flush=True)
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
 
 
