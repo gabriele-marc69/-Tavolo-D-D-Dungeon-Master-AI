@@ -130,7 +130,7 @@ def roll(expr: str, *, advantage: bool = False, disadvantage: bool = False,
 # ────────────────────────────────────────────────────────────────────────
 
 def ability_mod(score: int) -> int:
-    """Modificatore standard (score - 10) // 2."""
+    """Modificatore standard: (score - 10) // 2."""
     return (score - 10) // 2
 
 

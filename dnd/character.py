@@ -1,5 +1,5 @@
 """
-Generatore schede personaggio.
+Generatore schede personaggio(SRD 5.2 — Playtest 2024).
 
 Tabelle: SPECIES (specie), CLASSES (classi), BACKGROUNDS (background, con
 talento iniziale), ALIGNMENTS.
@@ -375,6 +375,22 @@ _MARK_GENERIC = ["una cicatrice sul volto", "un tatuaggio sull'avambraccio",
 # Equipaggiamento iniziale (semplificato)
 # ────────────────────────────────────────────────────────────────────────
 
+# Denominazioni di moneta (italiano): platino, oro, argento, rame.
+COIN_KINDS = ("mp", "po", "ma", "mr")
+
+# Oro iniziale (in pezzi d'oro) per classe — borsa di partenza a Lv1.
+CLASS_START_GOLD = {
+    "Barbaro": 60,  "Bardo": 100, "Chierico": 100, "Druido": 60,
+    "Guerriero": 120, "Monaco": 40, "Paladino": 120, "Ranger": 100,
+    "Ladro": 80,    "Stregone": 60, "Warlock": 80,  "Mago": 80,
+}
+
+
+def empty_treasure(gold: int = 0) -> dict:
+    """Borsa monete: pezzi di platino/oro/argento/rame. `gold` va nei po."""
+    return {"mp": 0, "po": max(0, int(gold or 0)), "ma": 0, "mr": 0}
+
+
 CLASS_GEAR = {
     "Barbaro":   ["Ascia bipenne", "2 asce da lancio", "Pacco da esploratore", "4 giavellotti"],
     "Bardo":     ["Spada lunga", "Pacco da intrattenitore", "Liuto", "Armatura di cuoio", "Pugnale"],
@@ -564,7 +580,7 @@ def generate_sheet(
     rng: Optional[random.Random] = None,
 ) -> dict:
     """
-    Genera una scheda personaggio.
+    Genera una scheda completa per il personaggio.
     Lancia ValueError se specie/classe/background sono sconosciuti.
     """
     rng = rng or random
@@ -682,6 +698,7 @@ def generate_sheet(
         "skills":            skills,
         "languages":         languages,
         "equipment":         equipment,
+        "treasure":          empty_treasure(CLASS_START_GOLD.get(cls, 50)),
         "weapon_masteries":  masteries,
 
         "traits":         sp_data["traits"],
@@ -758,6 +775,20 @@ def upgrade_sheet(sheet: dict) -> dict:
     is_caster = bool(cls_data.get("spellcasting"))
     sheet["caster_type"] = (CASTER_TYPE.get(cls, "full")
                             if is_caster else "none")
+
+    # borsa monete: la aggiunge alle schede vecchie e completa le
+    # denominazioni mancanti senza toccare i valori già presenti.
+    tre = sheet.get("treasure")
+    if not isinstance(tre, dict):
+        tre = empty_treasure(CLASS_START_GOLD.get(cls, 50))
+        sheet["treasure"] = tre
+    else:
+        for k in COIN_KINDS:
+            try:
+                tre[k] = max(0, int(tre.get(k, 0) or 0))
+            except (TypeError, ValueError):
+                tre[k] = 0
+
     if not is_caster:
         return sheet
 
@@ -808,6 +839,7 @@ def gender_list() -> list[str]:
 __all__ = [
     "SPECIES", "CLASSES", "BACKGROUNDS", "ALIGNMENTS", "GENDERS",
     "STANDARD_ARRAY", "ABILITIES", "CASTER_TYPE", "SPELL_ABILITY",
+    "COIN_KINDS", "CLASS_START_GOLD", "empty_treasure",
     "generate_sheet", "recompute_derived", "upgrade_sheet",
     "species_list", "class_list",
     "background_list", "alignment_list", "gender_list",

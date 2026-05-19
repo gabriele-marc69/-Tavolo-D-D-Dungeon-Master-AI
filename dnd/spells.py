@@ -1,5 +1,5 @@
 """
-Database incantesimi — usato dalle schede iniziali.
+Database incantesimi — sottoinsieme SRD usato dalle schede iniziali.
 
 Ogni voce: `level` (0 = trucchetto, non consuma slot) e `desc` (breve
 descrizione in italiano di cosa fa l'incantesimo).

@@ -58,6 +58,7 @@ def empty_state() -> dict:
         "rolls_log":         [],     # ultimi 30 tiri per UI
         "pending_rolls":     [],     # ROLL_REQ in attesa: li tira il giocatore umano
         "pending_roll_feedback": [], # tiri IA risolti, non ancora narrati dal DM
+        "pending_dm_notes":  [],     # note di sistema da consegnare al DM (es. slot esauriti)
         "music":             {},     # colonne sonore generate dal DM, per mood
         "sprites":           {},     # sprite pixel-art 10×10 generate dal DM
     }
