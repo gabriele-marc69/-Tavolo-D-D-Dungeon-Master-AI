@@ -28,6 +28,7 @@ RE_ROLL_REQ  = re.compile(r"<ROLL_REQ>([\s\S]*?)</ROLL_REQ>")
 RE_MUSIC     = re.compile(r"<MUSIC>([\s\S]*?)</MUSIC>")
 RE_SPRITE    = re.compile(r"<SPRITE>([\s\S]*?)</SPRITE>")
 RE_SCENE     = re.compile(r"<SCENE>([\s\S]*?)</SCENE>")
+RE_SPELL_CAST = re.compile(r"<SPELL_CAST>([\s\S]*?)</SPELL_CAST>")
 RE_MAP       = re.compile(r"MAP_START\s*\n([\s\S]*?)\nMAP_END")
 RE_MAP_BLOCK = re.compile(r"MAP_START[\s\S]*?MAP_END\s*", re.IGNORECASE)
 RE_DEBUG_LN  = re.compile(r"^\s*\*(?:Calcolo|Formula Base|Dettaglio).*?\*\s*$",
@@ -112,14 +113,132 @@ RE_LEAK_LINE = re.compile(
 # Pulizia
 # ────────────────────────────────────────────────────────────────────────
 
+# Etichette di interfaccia che alcune chat web antepongono alla risposta
+# come testo per screen-reader (es. Claude.ai con locale italiano:
+# "Claude ha risposto:"). L'estrazione via innerText le cattura: da togliere.
+RE_UI_LABEL = re.compile(
+    r"(?:^|\n)[ \t]*(?:Claude|Assistant|Assistente|ChatGPT|Gemini|DeepSeek|"
+    r"Grok|Qwen)\s+(?:ha\s+(?:risposto|detto|scritto)|said|replied|"
+    r"responded)[ \t]*:[ \t]*",
+    re.IGNORECASE,
+)
+
+
+def _norm_cmp(s: str) -> str:
+    """Forma normalizzata per il CONFRONTO fra testi: senza markdown, senza
+    punteggiatura di coda, whitespace collassato, minuscolo. Così due copie
+    che differiscono solo per markdown o punteggiatura risultano uguali."""
+    s = re.sub(r"[*_`#>~]+", "", s)
+    s = re.sub(r"\s+", " ", s).strip().lower()
+    return s.rstrip(" .!?,;:—-…")
+
+
+def _same_text(a: str, b: str) -> bool:
+    """True se due testi sono 'la stessa cosa' a meno di markdown,
+    punteggiatura di coda o lieve troncamento (copia raddoppiata)."""
+    a, b = _norm_cmp(a), _norm_cmp(b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    lo, hi = (a, b) if len(a) <= len(b) else (b, a)
+    return len(lo) >= 25 and hi.startswith(lo) and (len(hi) - len(lo)) <= 4
+
+
+def _dedup_consecutive(units: list, min_len: int) -> list:
+    """Rimuove ogni elemento uguale (per _same_text) a quello tenuto prima.
+    Salta il confronto sulle unità troppo corte (sotto min_len)."""
+    out: list = []
+    for u in units:
+        if out and len(_norm_cmp(u)) >= min_len and _same_text(out[-1], u):
+            continue
+        out.append(u)
+    return out
+
+
+def _dehalve(units: list) -> list:
+    """Se `units` è una sequenza raddoppiata [A,B,…][A,B,…], restituisce
+    solo la prima metà."""
+    m = len(units)
+    if m >= 2 and m % 2 == 0:
+        first, second = units[: m // 2], units[m // 2:]
+        if (all(_same_text(a, b) for a, b in zip(first, second))
+                and any(len(_norm_cmp(x)) >= 15 for x in first)):
+            return first
+    return units
+
+
+def _collapse_doubled(s: str) -> str:
+    """Collassa un testo che è la stessa cosa ripetuta due volte di fila
+    (separata da whitespace; la seconda copia può essere markdown grezzo o
+    leggermente troncata): restituisce una sola copia."""
+    norm = _norm_cmp(s)
+    L = len(norm)
+    if L < 60:
+        return s
+    half = L // 2
+    for h in range(max(1, half - 6), half + 7):
+        if _same_text(norm[:h], norm[h:]):
+            # ritaglia la prima copia nel testo ORIGINALE: conta i caratteri
+            # di confronto (markdown escluso) finché si raggiunge `h`.
+            count, cut, prev_ws = 0, len(s), False
+            for i, ch in enumerate(s):
+                if ch in "*_`#>~":
+                    continue
+                ws = ch.isspace()
+                if not ws or not prev_ws:
+                    count += 1
+                prev_ws = ws
+                if count >= h:
+                    cut = i + 1
+                    break
+            return s[:cut].strip()
+    return s
+
+
+def _dedup_sentences(block: str) -> str:
+    """Dentro un blocco, rimuove le FRASI consecutive duplicate (riga per
+    riga). Usato solo sulla narrazione finale (testo già privo di tag)."""
+    out_lines = []
+    for line in block.split("\n"):
+        sents = re.split(r"(?<=[.!?…])\s+", line)
+        if len(sents) > 1:
+            sents = _dedup_consecutive(sents, min_len=25)
+        out_lines.append(" ".join(sents))
+    return "\n".join(out_lines)
+
+
+def _dedup_response(text: str, deep: bool = False) -> str:
+    """Collassa le risposte duplicate dalle chat web (es. Claude.ai, che
+    rimanda il messaggio raddoppiato — preceduto da un'etichetta UI e con
+    una copia in markdown grezzo). Toglie l'etichetta, poi collassa la
+    ripetizione a livello di blocco e di intero messaggio. `deep=True`
+    aggiunge la dedup a livello di FRASE: usarla SOLO sulla narrazione
+    finale (testo già privo di mappa e tag)."""
+    if not text:
+        return text
+    s = RE_UI_LABEL.sub("\n", text).strip()
+    blocks = re.split(r"\n{2,}", s)
+    if len(blocks) >= 2:
+        blocks = _dedup_consecutive(_dehalve(blocks), min_len=15)
+        s = "\n\n".join(blocks).strip()
+    if deep:
+        s = "\n\n".join(_dedup_sentences(b)
+                        for b in re.split(r"\n{2,}", s))
+    return _collapse_doubled(s)
+
+
 def clean_text(text: str) -> str:
-    """Rimuove blocchi <think>, righe di debug, spazi multipli eccessivi.
-    NON rimuove tag STATE_UPDATE/CHAR_UPDATE/ROLL_REQ (gestiti separatamente)."""
+    """Rimuove blocchi <think>, righe di debug, spazi multipli eccessivi e
+    collassa le risposte duplicate (chat web che rimandano il messaggio due
+    volte). NON rimuove i tag STATE_UPDATE/CHAR_UPDATE/ROLL_REQ
+    (gestiti separatamente)."""
     if not text:
         return ""
     out = RE_THINK.sub("", text)
     out = RE_DEBUG_LN.sub("", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
+    out = _dedup_response(out)
     return out.strip()
 
 
@@ -131,6 +250,7 @@ def strip_tags(text: str) -> str:
     out = RE_MUSIC.sub("", out)
     out = RE_SPRITE.sub("", out)
     out = RE_SCENE.sub("", out)
+    out = RE_SPELL_CAST.sub("", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out.strip()
 
@@ -149,6 +269,7 @@ def strip_narrative(text: str) -> str:
     out = RE_MUSIC.sub("", out)
     out = RE_SPRITE.sub("", out)
     out = RE_SCENE.sub("", out)
+    out = RE_SPELL_CAST.sub("", out)
     out = RE_MAP_BLOCK.sub("", out)
     out = RE_AI_FOOTER.sub("", out)
     # applica più volte: sezioni adiacenti possono lasciare residui che
@@ -163,6 +284,11 @@ def strip_narrative(text: str) -> str:
     # rimuovi separatori "---" rimasti orfani
     out = re.sub(r"(?m)^\s*---+\s*$", "", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
+    # Dedup FINALE della narrazione: la chat web può raddoppiare il
+    # messaggio (con un blocco tag MAP/STATE FRA le due copie, oppure
+    # ripetendo solo l'ultima frase). Qui i tag sono già stati tolti →
+    # dedup profonda (blocco + frase) sul testo di pura narrazione.
+    out = _dedup_response(out, deep=True)
     return out.strip()
 
 
@@ -317,6 +443,16 @@ def extract_roll_requests(text: str) -> list[dict]:
     """Tutti i <ROLL_REQ> come lista di dict payload (gestisce anche array)."""
     out: list[dict] = []
     for m in RE_ROLL_REQ.finditer(text):
+        out.extend(_as_dicts(_safe_json(m.group(1))))
+    return out
+
+
+def extract_spell_casts(text: str) -> list[dict]:
+    """Tutti i <SPELL_CAST> come lista di dict {by, spell, level}: il DM
+    li emette quando un PG/PNG lancia un incantesimo, così il sistema può
+    scalare lo slot corrispondente sulla scheda."""
+    out: list[dict] = []
+    for m in RE_SPELL_CAST.finditer(text):
         out.extend(_as_dicts(_safe_json(m.group(1))))
     return out
 
@@ -495,6 +631,70 @@ def apply_char_updates(state: dict, updates: list[dict],
                 print(f"[parser] persist fallita per {name}: {e}", flush=True)
 
 
+def apply_spell_casts(state: dict, casts: list[dict]) -> list[dict]:
+    """Consuma uno slot incantesimo per ogni <SPELL_CAST> di livello ≥ 1.
+
+    I trucchetti (livello 0) sono a volontà: NON consumano slot.
+    Restituisce un report con un dict per ogni lancio:
+      {by, spell, level, ok, detail}
+    `ok=False` se il PG non esiste, non è incantatore, non ha uno slot di
+    quel livello, oppure ha già esaurito gli slot di quel livello — in tal
+    caso lo slot NON viene scalato e il DM va avvisato (l'incantesimo non
+    può essere lanciato)."""
+    results: list[dict] = []
+    if not casts:
+        return results
+    for c in casts:
+        if not isinstance(c, dict):
+            continue
+        by = (c.get("by") or c.get("name") or c.get("character") or "").strip()
+        spell = (c.get("spell") or c.get("name") or "").strip()
+        try:
+            level = int(c.get("level", 0) or 0)
+        except (TypeError, ValueError):
+            level = 0
+        rec = {"by": by, "spell": spell, "level": level, "ok": True, "detail": ""}
+        if level <= 0:
+            rec["detail"] = "trucchetto — a volontà, nessuno slot consumato"
+            results.append(rec)
+            continue
+        player = next(
+            (p for p in state.get("players", [])
+             if (p.get("name") or "").lower() == by.lower()),
+            None,
+        )
+        if player is None:
+            rec["ok"] = False
+            rec["detail"] = "personaggio non trovato"
+            results.append(rec)
+            continue
+        sheet = player.setdefault("sheet", {})
+        spells = sheet.get("spells")
+        slots = spells.get("slots") if isinstance(spells, dict) else None
+        if not isinstance(slots, dict) or not slots:
+            rec["ok"] = False
+            rec["detail"] = "il personaggio non è un incantatore"
+            results.append(rec)
+            continue
+        sl = slots.get(str(level))
+        if not isinstance(sl, dict):
+            rec["ok"] = False
+            rec["detail"] = f"nessuno slot di livello {level}"
+            results.append(rec)
+            continue
+        mx = max(0, int(sl.get("max", 0) or 0))
+        used = max(0, int(sl.get("used", 0) or 0))
+        if used >= mx:
+            rec["ok"] = False
+            rec["detail"] = f"slot di livello {level} esauriti ({used}/{mx})"
+            results.append(rec)
+            continue
+        sl["used"] = used + 1
+        rec["detail"] = f"slot L{level} consumato — restano {mx - sl['used']}/{mx}"
+        results.append(rec)
+    return results
+
+
 # Mood validi per il motore musicale (slot rimpiazzabili dal DM).
 _MUSIC_MOODS = {"menu", "generation", "explore", "social", "combat"}
 _MUSIC_FIELDS = ("bpm", "wave", "cutoff", "gain", "pad", "bass", "lead", "drum")
@@ -542,6 +742,7 @@ __all__ = [
     "clean_text", "strip_tags", "strip_narrative",
     "extract_state", "extract_chars", "extract_map", "extract_music",
     "extract_sprites", "extract_scene", "extract_roll_requests",
-    "resolve_roll_requests", "apply_state_update", "apply_char_updates",
+    "extract_spell_casts", "resolve_roll_requests",
+    "apply_state_update", "apply_char_updates", "apply_spell_casts",
     "apply_music_update", "apply_sprites", "apply_scene", "_deep_merge",
 ]

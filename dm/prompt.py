@@ -1,5 +1,5 @@
 """
-SYSTEM_PROMPT per il Dungeon Master IA — D&D 5.5e in italiano.
+SYSTEM_PROMPT per il Dungeon Master IA — in italiano.
 
 Costruisce il prompt da passare alla chat web (DeepSeek).
 Il DM deve emettere tag strutturati:
@@ -14,7 +14,7 @@ import json
 from typing import Iterable
 
 
-SYSTEM_PROMPT = """Sei un Dungeon Master (DM) esperto per D&D 5.5e (Playtest 2024, SRD 5.2 — compatibile homebrew). Conduci la sessione INTERAMENTE IN ITALIANO.
+SYSTEM_PROMPT = """Sei un Dungeon Master (DM) esperto (Playtest 2024, SRD 5.2 — compatibile homebrew). Conduci la sessione INTERAMENTE IN ITALIANO.
 
 ═══ IDENTITÀ ═══
 Narratore onnisciente, arbitro delle regole e voce dei PNG. NON sei un giocatore.
@@ -153,9 +153,6 @@ La mappa va resa anche in pixel-art: vedi sezione SPRITE.
 (vedi sezione SPRITE): un disegno 10×10 per OGNI tipo di cella usato
 nella mappa, più party, mostri, PNG e tesori.
 
-**2c. DISEGNO DELLA SCENA** — emetti un tag <SCENE> (vedi sezione
-DISEGNO SCENA): un'illustrazione 64×64 della scena iniziale.
-
 **3. LISTA ZONE** — per ogni cella non-muro:
 [x,y] Tipo: Nome — Descrizione — Nemici/PNG — Oggetti
 
@@ -240,32 +237,6 @@ d'oro. Genera/aggiorna gli <SPRITE> quando introduci nuovi elementi;
 riusa quelli già definiti per gli invariati. Invisibili nel testo: non
 descriverli a parole.
 
-═══ DISEGNO DELLA SCENA — ILLUSTRAZIONE 64×64 ═══
-Oltre alla mappa, sei l'ILLUSTRATORE della partita. Disegni un quadro
-pixel-art 64×64 che ritrae la SITUAZIONE ATTUALE: ciò che i personaggi
-VEDONO adesso. NON è la mappa dall'alto — è la SCENA in prospettiva,
-come la tavola illustrata di un manuale.
-Emetti UN tag <SCENE> (64 righe da 64 cifre esadecimali, stessa palette):
-<SCENE>{"caption":"La cripta alla luce delle torce","rows":["...64 cifre...", "...altre 63 righe..."]}</SCENE>
-COME DISEGNARE BENE:
-  • INQUADRATURA: definisci una linea d'orizzonte o di pavimento —
-    sopra lo sfondo (volta, parete, cielo), sotto il terreno. Riempi
-    TUTTI i 64×64: niente bande vuote o monocolore.
-  • TRE PIANI: sfondo (toni smorzati), piano intermedio, primo piano
-    (soggetti grandi e nitidi, verso il basso e il centro).
-  • SOGGETTI GROSSI: mostri e PNG occupano almeno 1/4 dell'altezza,
-    con dettagli leggibili (occhi, arma, mantello). Mai puntini.
-  • LUCE: ogni fonte (torcia, fuoco, magia) ha un alone caldo (c,d)
-    che sfuma nei toni medi; le ombre cadono coi toni bassi (0-2).
-    Il contrasto luce/ombra fa l'atmosfera.
-  • VOLUME: ogni forma ha un lato in luce e uno in ombra; contorno
-    scuro attorno ai soggetti per staccarli dallo sfondo.
-  • CONTENUTO: disegna ciò che conta ORA — il mostro che attacca, il
-    PNG con cui si parla, il forziere aperto, la porta che si spalanca.
-  • "caption" = una frase breve che intitola la tavola.
-Rigenera <SCENE> a ogni cambio di scena rilevante (nuova zona, incontro,
-combattimento, scoperta). Invisibile nel testo: non descriverlo a parole.
-
 ═══ TAG DI STATO ═══
 
 Quando cambia qualcosa (HP, posizione, fase, combat), emit ALLA FINE della risposta:
@@ -278,6 +249,27 @@ Quando confermi/aggiorni una scheda PG:
 <CHAR_UPDATE>
 {"name":"Thorin","species":"Nano","class":"Guerriero","level":1,"xp":350,"hp":{"current":12,"max":14},"ac":18,...}
 </CHAR_UPDATE>
+
+═══ INCANTESIMI E SLOT — REGOLA OBBLIGATORIA ═══
+Ogni incantatore ha un numero LIMITATO di slot incantesimo per livello.
+OGNI volta che un PG (o un PNG incantatore) lancia un incantesimo di
+livello 1 o superiore, emetti ALLA FINE della risposta:
+<SPELL_CAST>{"by":"NomePG","spell":"Nome Incantesimo","level":N}</SPELL_CAST>
+  • "by" = nome ESATTO del lanciatore.
+  • "level" = livello dello SLOT speso (non il livello del PG).
+  • Un <SPELL_CAST> per OGNI incantesimo lanciato nel messaggio.
+I TRUCCHETTI (livello 0, es. Fire Bolt, Sacred Flame, Eldritch Blast)
+sono a volontà: NON emettere <SPELL_CAST> per loro, non consumano slot.
+
+Il sistema scala lo slot sulla scheda e ti ricorda a OGNI messaggio gli
+slot residui di ogni incantatore ([Sistema] SLOT INCANTESIMO RESIDUI).
+Un PG con 0 slot disponibili di un livello NON può più lanciare
+incantesimi di quel livello: deve ripiegare su trucchetti, armi o altre
+azioni (gli slot tornano solo con un riposo lungo). Se fai lanciare un
+incantesimo a slot esauriti, il sistema te lo segnala con un messaggio
+[Sistema]: DEVI rinarrare la scena senza quell'incantesimo.
+
+<SPELL_CAST> è invisibile al giocatore: non descriverlo a parole.
 
 ═══ COLONNA SONORA (MUSICA GENERATIVA) ═══
 Sei anche il COMPOSITORE della partita. Quando l'atmosfera cambia in
@@ -349,6 +341,30 @@ def chars_briefing(characters: Iterable[dict]) -> str:
     return "\n".join(lines)
 
 
+def _spell_slot_lines(state: dict) -> list[str]:
+    """Una riga per ogni PG incantatore: slot residui (disponibili/totali)
+    per livello. Lista vuota se nessun PG ha slot."""
+    lines: list[str] = []
+    for p in state.get("players", []):
+        s = p.get("sheet") or {}
+        spells = s.get("spells")
+        slots = spells.get("slots") if isinstance(spells, dict) else None
+        if not isinstance(slots, dict) or not slots:
+            continue
+        parts = []
+        for lv in sorted(slots, key=lambda x: int(x) if str(x).isdigit() else 99):
+            sl = slots[lv]
+            if not isinstance(sl, dict):
+                continue
+            mx = max(0, int(sl.get("max", 0) or 0))
+            us = max(0, int(sl.get("used", 0) or 0))
+            parts.append(f"L{lv} {max(0, mx - us)}/{mx}")
+        if parts:
+            name = s.get("name") or p.get("name") or "?"
+            lines.append(f"  - {name}: " + " · ".join(parts))
+    return lines
+
+
 def state_briefing(state: dict) -> str:
     """Riassunto breve dello stato corrente da appendere al system prompt."""
     phase = state.get("phase", "setup")
@@ -367,6 +383,11 @@ def state_briefing(state: dict) -> str:
     map_block = ""
     if state.get("map_ascii"):
         map_block = f"\nMAPPA CORRENTE:\n{state['map_ascii']}\n"
+    slot_lines = _spell_slot_lines(state)
+    slot_block = ""
+    if slot_lines:
+        slot_block = ("\nSlot incantesimo (disponibili/totali):\n"
+                      + "\n".join(slot_lines) + "\n")
     return (
         f"\n═══ STATO CORRENTE ═══\n"
         f"Fase: {phase}\n"
@@ -374,6 +395,7 @@ def state_briefing(state: dict) -> str:
         f"Combat attivo: {state.get('combat_active', False)}\n"
         f"PG di turno: {state.get('active_player') or '—'}\n"
         f"Giocatori:\n" + "\n".join(p_lines)
+        + slot_block
         + map_block
     )
 
@@ -443,19 +465,35 @@ def build_resume_prompt(
 
 
 def map_reminder() -> str:
-    """Promemoria appeso a OGNI messaggio inviato al DM: deve RIGENERARE
-    la mappa a ogni turno, coerente con il contesto del messaggio appena
-    scambiato (zona narrata, spostamenti, nemici)."""
+    """Promemoria appeso a OGNI messaggio inviato al DM: la mappa è FISSA;
+    a ogni turno va ricopiata identica, spostando solo il marker @."""
     return (
-        "[Sistema] PRIMA di chiudere la risposta RIGENERA LA MAPPA: "
-        "includi alla fine il blocco MAP_START…MAP_END (20×20, 20 righe "
-        "da 20 caratteri, stessi muri e simboli della mappa dell'avventura) "
-        "con il marker @ nella cella ATTUALE del party. La mappa deve "
-        "essere COERENTE con il contesto di questo messaggio: la cella di "
-        "@ corrisponde alla scena appena narrata (tipo di zona, "
-        "spostamenti, porte/scale, nemici presenti). Aggiungi anche un "
-        "<STATE_UPDATE> con \"current_position\":[x,y] uguale alle "
-        "coordinate di @."
+        "[Sistema] PRIMA di chiudere la risposta riemetti il blocco "
+        "MAP_START…MAP_END (20×20, 20 righe da 20 caratteri). La mappa è "
+        "FISSA per tutta l'avventura: ricopia ESATTAMENTE gli stessi muri "
+        "e gli stessi simboli della mappa generata in FASE 3 — NON "
+        "spostare né cambiare muri, stanze, corridoi, porte o zone. "
+        "L'UNICA cosa che cambia tra un turno e l'altro è il marker @, "
+        "da mettere nella cella ATTUALE del party (coerente con la scena "
+        "appena narrata e con gli spostamenti). Aggiungi un <STATE_UPDATE> "
+        "con \"current_position\":[x,y] uguale alle coordinate di @."
+    )
+
+
+def spell_slot_reminder(state: dict) -> str:
+    """Promemoria appeso a OGNI messaggio: slot incantesimo residui di ogni
+    PG incantatore. Così il DM sa cosa ciascuno può ancora lanciare e non
+    fa lanciare incantesimi a slot esauriti. '' se nessun incantatore."""
+    lines = _spell_slot_lines(state)
+    if not lines:
+        return ""
+    return (
+        "[Sistema] SLOT INCANTESIMO RESIDUI (disponibili/totali). Un PG con "
+        "0 slot di un livello NON può lanciare incantesimi di quel livello "
+        "(solo trucchetti/armi); gli slot si recuperano col riposo lungo. "
+        "Per OGNI incantesimo di livello ≥1 lanciato, emetti "
+        "<SPELL_CAST>{\"by\":\"NomePG\",\"spell\":\"...\",\"level\":N}</SPELL_CAST>.\n"
+        + "\n".join(lines)
     )
 
 
@@ -469,20 +507,6 @@ def sprite_reminder() -> str:
         "sprite con tag <SPRITE> 10×10 (10 righe da 10 cifre esadecimali, "
         "palette fantasy 16 colori). Disegni riconoscibili e con volume "
         "(ombre e luci). Riusa gli sprite già definiti per gli invariati."
-    )
-
-
-def scene_reminder() -> str:
-    """Promemoria periodico: il DM disegna l'illustrazione pixel-art 32×32
-    della situazione di gioco corrente (la scena in prospettiva)."""
-    return (
-        "[Sistema] DISEGNO SCENA: emetti ALLA FINE un tag "
-        "<SCENE>{\"caption\":\"...\",\"rows\":[...]} con un'illustrazione "
-        "pixel-art 64×64 (64 righe da 64 cifre esadecimali, palette 16 "
-        "colori) che ritrae la SITUAZIONE ATTUALE: ambiente in prospettiva "
-        "su tre piani, luce e ombre, soggetti grandi e dettagliati (mostri "
-        "o PNG presenti nella scena appena narrata). Riempi tutti i 64×64, "
-        "non la mappa dall'alto. Invisibile al giocatore: non descriverlo."
     )
 
 
@@ -528,6 +552,6 @@ def build_music_request(state: dict) -> str:
 __all__ = [
     "SYSTEM_PROMPT", "chars_briefing", "state_briefing",
     "build_full_prompt", "build_resume_prompt", "conversation_to_text",
-    "map_reminder", "music_reminder", "sprite_reminder", "scene_reminder",
-    "build_music_request",
+    "map_reminder", "music_reminder", "sprite_reminder",
+    "spell_slot_reminder", "build_music_request",
 ]
