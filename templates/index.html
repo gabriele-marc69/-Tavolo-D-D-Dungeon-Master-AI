@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>⚔ Tavolo D&D 5.5e</title>
+<title>⚔ Tavolo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=EB+Garamond:ital@0;1&display=swap">
@@ -12,7 +12,7 @@
 <body>
 
 <header class="topbar">
-  <div class="brand">⚔ <span>Tavolo D&D 5.5e</span></div>
+  <div class="brand">⚔ <span>Tavolo</span></div>
   <div class="status">
     <span class="badge" id="dm-status">DM: <strong id="dm-name">—</strong> <span id="dm-dot" class="dot off"></span></span>
     <span class="badge">Fase: <strong id="phase-name">setup</strong></span>
@@ -50,7 +50,7 @@
   <!-- COLONNA CENTRALE: CHAT DM -->
   <section class="col col-chat">
     <div id="chat-log" class="chat-log">
-      <div class="msg msg-system">Benvenuto al Tavolo D&D 5.5e. Apri <button class="link" onclick="openModal('setup')">Setup</button> per collegarti a DeepSeek e iniziare.</div>
+      <div class="msg msg-system">Benvenuto al Tavolo Apri <button class="link" onclick="openModal('setup')">Setup</button> per collegarti a DeepSeek e iniziare.</div>
     </div>
     <div id="typing" class="typing">⏳ Il DM sta pensando...</div>
     <form id="chat-form" class="chat-form" autocomplete="off">
@@ -90,12 +90,6 @@
         <span><i class="lg lg-fog"></i> Inesplorato</span>
       </div>
     </details>
-
-    <div id="scene-panel" class="scene-panel hidden">
-      <h3>🖼 Scena <span class="scene-tag">illustrazione</span></h3>
-      <div id="scene-render" class="scene-frame">— nessun disegno —</div>
-      <figcaption id="scene-caption" class="scene-caption">—</figcaption>
-    </div>
 
     <h3>🎲 Dadi</h3>
     <div id="dice-box" class="dice-box">
