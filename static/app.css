@@ -645,58 +645,6 @@ label input, label select{ margin-top: 4px; }
 .legend-grid-big span{ font-size: 13px; }
 .legend-grid-big .lg{ width: 19px; height: 19px; font-size: 13px; }
 
-/* ── disegno della scena — illustrazione pixel-art 32×32 ───────────── */
-/* Quadro incorniciato: ciò che i personaggi vedono ADESSO.            */
-.scene-panel{ margin-top: 6px; }
-.scene-panel.hidden{ display: none; }
-.scene-tag{
-  font-family: var(--font-serif);
-  font-size: 10px; font-weight: 400; font-style: italic;
-  letter-spacing: 0.4px;
-  color: var(--ink-mute);
-  text-transform: lowercase;
-}
-.scene-frame{
-  position: relative;
-  width: 400px;                        /* dimensione FISSA, come la mappa */
-  height: 400px;
-  margin: 0 auto;
-  background: #160f08;
-  border: 7px solid var(--wood-dk);
-  padding: 5px;
-  border-radius: 6px;
-  overflow: hidden;
-  image-rendering: pixelated;
-  box-shadow: inset 0 0 0 2px var(--gold-dk),
-              0 3px 10px rgba(0,0,0,0.55);
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-display);
-  color: var(--ink-mute);
-  font-size: 13px; letter-spacing: 1px;
-}
-.scene-canvas{
-  display: block;
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-}
-/* vignettatura calda: dà profondità all'illustrazione */
-.scene-frame::after{
-  content: "";
-  position: absolute; inset: 5px;
-  pointer-events: none;
-  box-shadow: inset 0 0 34px rgba(22,9,0,0.62);
-}
-.scene-caption{
-  margin: 8px 4px 2px;
-  text-align: center;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 13px;
-  color: var(--ink-soft);
-  line-height: 1.35;
-}
 
 /* ── tile della griglia — pixel art a toni di verde ──────────────── */
 .tile{
@@ -1225,6 +1173,16 @@ label input, label select{ margin-top: 4px; }
 }
 .slot-grp b{ color: var(--burgundy); font-size: 9.5px; }
 .slot-pips{ letter-spacing: 1px; color: var(--gold-dk); font-size: 10px; }
+
+/* monete possedute — borsa del personaggio */
+.pc-coins{
+  margin-top: 7px;
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+  color: var(--gold-dk);
+  font-variant-numeric: tabular-nums;
+}
+.se-coins label{ flex: 1 1 96px; }
 
 /* sezione incantesimi nelle schede sola-lettura */
 .sheet-spells{

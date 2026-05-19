@@ -309,7 +309,6 @@ function renderUI() {
   $('turn-num').textContent = gameState.turn || 0;
   renderPlayers();
   renderMap();
-  renderScene();
   renderRolls();
   renderDiceBox();
   if (window.Music) Music.applyState(gameState);
@@ -345,6 +344,19 @@ function spellSummaryHtml(s) {
   return `<div class="pc-spells">✦ ${metaHtml}${pips}</div>`;
 }
 
+// ─── Monete possedute — borsa del personaggio ───────────────────────
+// Denominazioni: platino, oro, argento, rame.
+const COIN_LABELS = { mp: 'MP', po: 'MO', ma: 'MA', mr: 'MR' };
+
+// "2 MP · 561 MO · 8 MA" — solo le denominazioni con valore > 0.
+function treasureText(t) {
+  if (!t || typeof t !== 'object') return '0 MO';
+  const parts = ['mp', 'po', 'ma', 'mr']
+    .filter(k => (t[k] | 0) > 0)
+    .map(k => `${t[k] | 0} ${COIN_LABELS[k]}`);
+  return parts.length ? parts.join(' · ') : '0 MO';
+}
+
 function renderPlayers() {
   const root = $('players-list');
   const players = gameState.players || [];
@@ -372,6 +384,7 @@ function renderPlayers() {
         ${escapeHtml(s.species || s.race || '?')} ${escapeHtml(s.class || '?')} Lv${s.level || 1}
         · CA ${s.ac || '?'} · XP ${s.xp || 0}
       </div>
+      <div class="pc-coins">💰 ${escapeHtml(treasureText(s.treasure))}</div>
       <div class="pc-hp">
         <div class="pc-hp-bar" style="width:${pct}%"></div>
         <div class="pc-hp-text">${hp.current}/${hp.max} HP</div>
@@ -387,7 +400,6 @@ function renderPlayers() {
 //    disegno 10×10. Palette FANTASY a 16 colori (indice esadecimale 0-f).
 const MAP_GRID = 20;     // celle per lato (tabella 20×20)
 const SPRITE_PX = 10;    // pixel per lato di ogni disegno (10×10)
-const SCENE_PX = 64;     // lato dell'illustrazione di scena (64×64)
 // Palette a 16 colori: ombre calde, pietra, legno, fogliame, acqua,
 // fiamme e oro. Indicizzata in esadecimale (0-f) come nei tag <SPRITE>.
 const PALETTE = [
@@ -505,7 +517,41 @@ function paintMap(root) {
     }
   }
   ctx.putImageData(img, 0, 0);
+  // illuminazione a torcia: alone caldo sul party + penombra ai bordi
+  paintMapLighting(ctx, side, rows);
   return true;
+}
+
+// Illuminazione a torcia disegnata DOPO le sprite: alone caldo attorno al
+// party, penombra ai bordi. Dà profondità e atmosfera "dungeon a lume".
+function paintMapLighting(ctx, side, rows) {
+  // posizione del party (@) sulla griglia
+  let px = -1, py = -1;
+  for (let y = 0; y < MAP_GRID; y++) {
+    const i = (rows[y] || '').indexOf('@');
+    if (i >= 0) { px = i; py = y; break; }
+  }
+  ctx.save();
+  // vignettatura calda: concentra lo sguardo sul centro dell'azione
+  const vg = ctx.createRadialGradient(
+    side / 2, side / 2, side * 0.20, side / 2, side / 2, side * 0.74);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(8,4,0,0.62)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, side, side);
+  // alone della torcia sul party (additivo → bagliore caldo)
+  if (px >= 0) {
+    const cx = px * SPRITE_PX + SPRITE_PX / 2;
+    const cy = py * SPRITE_PX + SPRITE_PX / 2;
+    const glow = ctx.createRadialGradient(cx, cy, 1, cx, cy, SPRITE_PX * 4.6);
+    glow.addColorStop(0,    'rgba(255,206,120,0.55)');
+    glow.addColorStop(0.45, 'rgba(228,138,52,0.24)');
+    glow.addColorStop(1,    'rgba(228,138,52,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, side, side);
+  }
+  ctx.restore();
 }
 
 function renderMap() {
@@ -524,46 +570,6 @@ function openMapModal() {
   const pos = (gameState && gameState.current_position) || [0, 0];
   $('map-big-pos').textContent = `[${pos[0]}, ${pos[1]}]`;
   openModal('map');
-}
-
-// ── Disegno della scena: illustrazione pixel-art 64×64 della situazione
-//    di gioco corrente, generata dal DM col tag <SCENE>. Il pannello
-//    resta nascosto finché non arriva il primo disegno.
-function renderScene() {
-  const root = $('scene-render');
-  if (!root) return;
-  const panel = $('scene-panel');
-  const scene = gameState && gameState.scene_art;
-  const rows = scene && scene.rows;
-  if (!rows || !rows.length) {
-    if (panel) panel.classList.add('hidden');
-    return;
-  }
-  if (panel) panel.classList.remove('hidden');
-  const side = SCENE_PX;                       // 32×32 px interni
-  let cv = root.querySelector('canvas.scene-canvas');
-  if (!cv) {
-    root.textContent = '';
-    cv = el('canvas', { class: 'scene-canvas' });
-    root.appendChild(cv);
-  }
-  if (cv.width !== side) { cv.width = side; cv.height = side; }
-  const ctx = cv.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  const img = ctx.createImageData(side, side);
-  const data = img.data;
-  for (let y = 0; y < side; y++) {
-    const srow = rows[y] || '';
-    for (let x = 0; x < side; x++) {
-      const col = PALETTE[parseInt(srow[x], 16) || 0] || PALETTE[0];
-      const di = (y * side + x) * 4;
-      data[di] = col[0]; data[di + 1] = col[1];
-      data[di + 2] = col[2]; data[di + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const cap = $('scene-caption');
-  if (cap) cap.textContent = (scene.caption || '').trim() || '—';
 }
 
 function renderRolls() {
@@ -759,9 +765,19 @@ $('dice-dis').addEventListener('change', (e) => {
 
 function addMsg(role, content) {
   const log = $('chat-log');
+  // Guardia anti-doppione: la chat web a volte rimanda la STESSA risposta
+  // del DM due volte di fila → non creare una seconda bolla identica.
+  if (role === 'dm') {
+    const last = log.lastElementChild;
+    if (last && last.classList.contains('msg-dm')
+        && last.dataset.dm === content) {
+      return last;
+    }
+  }
   const cls = role === 'user' ? 'msg msg-user' : role === 'dm' ? 'msg msg-dm' : `msg msg-${role}`;
   const div = el('div', { class: cls });
   div.innerHTML = renderMarkdown(content);
+  if (role === 'dm') div.dataset.dm = content;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
   if (role === 'dm') {
@@ -1049,6 +1065,7 @@ function sheetBlock(s) {
     <div><strong>Competenze:</strong> ${(s.skills || []).join(', ')}</div>
     <div><strong>Lingue:</strong> ${(s.languages || []).join(', ')}</div>
     <div><strong>Equip:</strong> ${(s.equipment || []).join(', ')}</div>
+    <div><strong>💰 Monete:</strong> ${escapeHtml(treasureText(s.treasure))}</div>
     ${s.weapon_masteries && s.weapon_masteries.length ? `<div><strong>Weapon Mastery:</strong> ${s.weapon_masteries.join(', ')}</div>` : ''}
     <div><strong>Tratti:</strong> ${(s.traits || []).join('; ')}</div>
     <div><strong>Capacità:</strong> ${(s.class_features || []).join('; ')}</div>
@@ -1152,6 +1169,7 @@ function buildSheetEditor(s, name) {
   const ABIL = ['FOR', 'DES', 'COS', 'INT', 'SAG', 'CAR'];
   const hp = s.hp || {};
   const sp = s.spells || {};
+  const tre = s.treasure || {};
   const isCaster = s.caster_type && s.caster_type !== 'none';
   const gsym = s.gender === 'Femmina' ? '♀' : (s.gender === 'Maschio' ? '♂' : '');
 
@@ -1211,6 +1229,13 @@ function buildSheetEditor(s, name) {
     <div class="se-stats">${statsHtml}</div>
     <h4>Equipaggiamento</h4>
     <textarea data-f="equipment" rows="5" placeholder="Un oggetto per riga">${(s.equipment || []).map(escapeHtml).join('\n')}</textarea>
+    <h4>💰 Monete possedute</h4>
+    <div class="se-row se-coins">
+      <label>Platino (MP) ${numF('treasure.mp', tre.mp || 0, 0)}</label>
+      <label>Oro (MO) ${numF('treasure.po', tre.po || 0, 0)}</label>
+      <label>Argento (MA) ${numF('treasure.ma', tre.ma || 0, 0)}</label>
+      <label>Rame (MR) ${numF('treasure.mr', tre.mr || 0, 0)}</label>
+    </div>
     ${isCaster ? `
       <h4>✦ Incantesimi</h4>
       <div class="se-spellmeta">Caratteristica <strong>${escapeHtml(sp.ability || '?')}</strong>
@@ -1440,12 +1465,15 @@ async function renderDebugDm() {
         `<pre class="debug-body">📺 MOSTRATO: ${escapeHtml(x.shown || '')}</pre>`,
         (x.rolls && x.rolls.length)
           ? `<pre class="debug-body">🎲 ${escapeHtml(JSON.stringify(x.rolls))}</pre>` : '',
+        (x.casts && x.casts.length)
+          ? `<pre class="debug-body ${x.casts.some(c => !c.ok) ? 'err' : 'ok'}">✦ INCANTESIMI: ${
+              escapeHtml(x.casts.map(c =>
+                `${c.by || '?'} «${c.spell || '?'}» L${c.level} ${c.ok ? '✓' : '✗'} ${c.detail || ''}`
+              ).join(' | '))}</pre>`
+          : '',
         mapCoherenceHtml(x.map),
         (x.sprites && x.sprites.length)
           ? `<pre class="debug-body ok">🎨 SPRITE pixel-art: ${escapeHtml(x.sprites.join(' '))}</pre>`
-          : '',
-        x.scene
-          ? `<pre class="debug-body ok">🖼 SCENA 32×32 generata</pre>`
           : '',
       ]);
       root.appendChild(d2);
