@@ -16,10 +16,17 @@ RUNTIME_DIR = os.path.join(BASE_DIR, "runtime")
 # Directory dedicata alle schede personaggio: un file "nome.json" per ogni
 # PG creato, così è possibile selezionarli singolarmente per comporre il party.
 CHARACTERS_DIR = os.path.join(RUNTIME_DIR, "personaggi")
+# Archivio delle avventure GENERATE dal DM: ogni generazione viene salvata
+# con un NOME NUOVO (timestamp + slug del titolo), così le partite passate
+# restano consultabili e una "Nuova avventura" non sovrascrive la vecchia.
+ADVENTURES_DIR = os.path.join(RUNTIME_DIR, "avventure")
 
 GAME_STATE_FILE   = os.path.join(RUNTIME_DIR, "game_state.json")
 CONVERSATION_FILE = os.path.join(RUNTIME_DIR, "conversation.json")
 CHARACTERS_FILE   = os.path.join(RUNTIME_DIR, "personaggi.json")
+# avventura.txt (radice): avventura precaricata caricata MANUALMENTE
+# dall'utente. Le avventure generate dal DM vanno invece in ADVENTURES_DIR
+# con nome univoco; il file attivo è puntato da game_state["adventure_file"].
 ADVENTURE_FILE    = os.path.join(BASE_DIR, "avventura.txt")
 # Ultimo modello DM scelto in Setup (url/name/timeout): persiste tra i
 # riavvii così l'app riapre l'ultimo modello configurato invece del default.
@@ -40,6 +47,7 @@ PHASES = (
 def _ensure_runtime() -> None:
     os.makedirs(RUNTIME_DIR, exist_ok=True)
     os.makedirs(CHARACTERS_DIR, exist_ok=True)
+    os.makedirs(ADVENTURES_DIR, exist_ok=True)
 
 
 # Sanitizza il nome PG per generarne un filename sicuro:
@@ -60,6 +68,26 @@ def safe_char_filename(name: str) -> str:
 def character_file_path(name: str) -> str:
     """Percorso assoluto del file per-personaggio 'nome.json'."""
     return os.path.join(CHARACTERS_DIR, safe_char_filename(name) + ".json")
+
+
+def new_adventure_path(title: str = "") -> str:
+    """Percorso NUOVO e univoco per un'avventura generata dal DM:
+    'runtime/avventure/<timestamp>_<slug-del-titolo>.txt'. Ogni
+    generazione ottiene un nome diverso, così non sovrascrive le
+    precedenti (richiesto dal flusso "Nuova avventura")."""
+    _ensure_runtime()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    slug = safe_char_filename(title)[:48] if title else "avventura"
+    return os.path.join(ADVENTURES_DIR, f"{stamp}_{slug}.txt")
+
+
+def current_adventure_path(state: dict) -> str:
+    """Percorso del file dell'avventura ATTIVA. Preferisce
+    game_state['adventure_file'] (avventura generata, nome univoco) e
+    ripiega su ADVENTURE_FILE (avventura.txt caricata a mano) per
+    retro-compatibilità con gli stati salvati prima di questo campo."""
+    p = (state or {}).get("adventure_file")
+    return p if p else ADVENTURE_FILE
 
 
 def empty_state() -> dict:
@@ -85,6 +113,8 @@ def empty_state() -> dict:
         "encounter":         None,   # {monsters:[...], remaining_hp:{...}}
         "adventure_loaded":  False,
         "adventure_title":   None,
+        "adventure_file":    None,   # path del TXT dell'avventura attiva
+                                     # (generata: nome univoco in runtime/avventure)
         "adventure_beats":   [],     # avventura TXT precaricata, spezzata in scene
         "adventure_index":   0,      # prossimo beat da consegnare al DM
         "characters_loaded": False,
@@ -886,7 +916,8 @@ def normalize_map(ascii_map: str,
 
 __all__ = [
     "PHASES", "GAME_STATE_FILE", "CONVERSATION_FILE",
-    "CHARACTERS_FILE", "CHARACTERS_DIR", "ADVENTURE_FILE", "RUNTIME_DIR",
+    "CHARACTERS_FILE", "CHARACTERS_DIR", "ADVENTURE_FILE", "ADVENTURES_DIR",
+    "new_adventure_path", "current_adventure_path", "RUNTIME_DIR",
     "WEBCHAT_CONFIG_FILE", "load_webchat_config", "save_webchat_config",
     "empty_state", "load_state", "save_state",
     "load_conversation", "save_conversation",

@@ -3326,14 +3326,12 @@ $('btn-new').addEventListener('click', async () => {
   renderUI();
   await refreshAdventureBadge();
 
-  // Generazione automatica dell'avventura su misura del party
+  // Generazione automatica dell'avventura su misura del party: premere
+  // "Nuova" cancella la vecchia avventura (sopra) e chiede SUBITO al DM
+  // una avventura nuova, salvata da app.py con un nome univoco.
   if (!kept) return;
   if (!dmOpen) {
     addMsg('system', 'Per generare un\'avventura su misura collega il DM dal Setup.');
-    return;
-  }
-  if (!confirm('Vuoi che il DM scriva un\'avventura su misura per questo party? '
-               + '(richiede 30-90 secondi). Senza generazione: gioco libero.')) {
     return;
   }
   try {
@@ -3349,7 +3347,8 @@ $('btn-new').addEventListener('click', async () => {
       return;
     }
     addMsg('system',
-      `📜 Avventura «${gd.title}» pronta: ${gd.beats} scene (${gd.chars} caratteri). `
+      `📜 Avventura «${gd.title}» pronta: ${gd.beats} scene (${gd.chars} caratteri)`
+      + (gd.file ? `, salvata come ${gd.file}` : '') + '. '
       + `Il DM sta preparando la prima scena…`);
     await refreshAdventureBadge();
     // Aspetta la scena di apertura prodotta dal briefing.

@@ -774,17 +774,22 @@ def api_new_game():
     body = request.get_json(silent=True) or {}
     keep_chars = body.get("keep_characters", True)
     with _state_lock:
+        # CANCELLA la vecchia avventura PRIMA di azzerare lo stato: cattura
+        # il path attivo (avventura generata con nome univoco oppure
+        # avventura.txt caricata a mano) e rimuovi entrambi i file dal disco,
+        # così la nuova partita non eredita né l'avventura né i dialoghi.
+        old_paths = {
+            state_mod.current_adventure_path(game_state),
+            state_mod.ADVENTURE_FILE,
+        }
         game_state = state_mod.empty_state()
         conversation_history = []
-        # Reset avventure precedenti: empty_state azzera già beat/indice nello
-        # stato; qui cancelliamo anche il TXT su disco così la nuova partita
-        # non eredita la vecchia avventura. La nuova verrà salvata da
-        # /api/generate_adventure (riprendibile interrompendo e ripartendo).
-        try:
-            if os.path.exists(state_mod.ADVENTURE_FILE):
-                os.remove(state_mod.ADVENTURE_FILE)
-        except OSError as e:
-            print(f"[NEW_GAME] impossibile cancellare avventura.txt: {e}", flush=True)
+        for p in old_paths:
+            try:
+                if p and os.path.exists(p):
+                    os.remove(p)
+            except OSError as e:
+                print(f"[NEW_GAME] impossibile cancellare {p}: {e}", flush=True)
         # riusa i personaggi salvati su personaggi.json
         if keep_chars:
             chars_data = state_mod.load_characters()
@@ -871,8 +876,11 @@ def api_generate_adventure():
     if not beats:
         return jsonify({"error": "Avventura generata non spezzabile in scene."}), 502
 
+    # Salva con un NOME NUOVO e univoco (timestamp + slug del titolo) in
+    # runtime/avventure: una "Nuova avventura" non sovrascrive le vecchie.
+    adv_path = state_mod.new_adventure_path(title)
     try:
-        with open(state_mod.ADVENTURE_FILE, "w", encoding="utf-8") as f:
+        with open(adv_path, "w", encoding="utf-8") as f:
             f.write(text)
     except OSError as e:
         return jsonify({"error": f"Salvataggio fallito: {e}"}), 500
@@ -880,6 +888,7 @@ def api_generate_adventure():
     with _state_lock:
         game_state["adventure_loaded"] = True
         game_state["adventure_title"]  = title
+        game_state["adventure_file"]   = adv_path
         game_state["adventure_beats"]  = beats
         game_state["adventure_index"]  = 0
         state_mod.save_state(game_state)
@@ -923,6 +932,7 @@ def api_generate_adventure():
     return jsonify({
         "status":  "ok",
         "title":   title,
+        "file":    os.path.basename(adv_path),
         "beats":   len(beats),
         "chars":   len(text),
         "preview": text[:400],
@@ -975,6 +985,7 @@ def api_load_adventure():
     with _state_lock:
         game_state["adventure_loaded"] = True
         game_state["adventure_title"]  = title or game_state.get("adventure_title") or "Avventura precaricata"
+        game_state["adventure_file"]   = state_mod.ADVENTURE_FILE
         game_state["adventure_beats"]  = beats
         game_state["adventure_index"]  = 0
         state_mod.save_state(game_state)
@@ -1063,16 +1074,23 @@ def api_adventure_clear():
     """Toglie l'avventura precaricata e la coda di beat: il DM riprende
     in modalità libera."""
     with _state_lock:
+        # rimuovi sia il file attivo (generato, nome univoco) sia avventura.txt
+        old_paths = {
+            state_mod.current_adventure_path(game_state),
+            state_mod.ADVENTURE_FILE,
+        }
         game_state["adventure_loaded"] = False
         game_state["adventure_title"]  = None
+        game_state["adventure_file"]   = None
         game_state["adventure_beats"]  = []
         game_state["adventure_index"]  = 0
         state_mod.save_state(game_state)
-    try:
-        if os.path.exists(state_mod.ADVENTURE_FILE):
-            os.remove(state_mod.ADVENTURE_FILE)
-    except OSError:
-        pass
+    for p in old_paths:
+        try:
+            if p and os.path.exists(p):
+                os.remove(p)
+        except OSError:
+            pass
     return jsonify({"status": "cleared"})
 
 
@@ -1102,9 +1120,9 @@ def api_load():
     chars_list = (chars_data or {}).get("characters") if chars_data else None
 
     adventure_text = None
-    if (game_state.get("adventure_loaded")
-            and os.path.exists(state_mod.ADVENTURE_FILE)):
-        with open(state_mod.ADVENTURE_FILE, "r", encoding="utf-8") as f:
+    _adv_path = state_mod.current_adventure_path(game_state)
+    if game_state.get("adventure_loaded") and os.path.exists(_adv_path):
+        with open(_adv_path, "r", encoding="utf-8") as f:
             adventure_text = f.read()
 
     resume = prompt_mod.build_resume_prompt(
@@ -1495,9 +1513,9 @@ def api_chat():
                 chars_data = state_mod.load_characters()
                 chars_list = (chars_data or {}).get("characters") if chars_data else None
                 adventure_text = None
-                if (game_state.get("adventure_loaded")
-                        and os.path.exists(state_mod.ADVENTURE_FILE)):
-                    with open(state_mod.ADVENTURE_FILE, "r", encoding="utf-8") as f:
+                _adv_path = state_mod.current_adventure_path(game_state)
+                if game_state.get("adventure_loaded") and os.path.exists(_adv_path):
+                    with open(_adv_path, "r", encoding="utf-8") as f:
                         adventure_text = f.read()
                 system = prompt_mod.build_full_prompt(
                     state=game_state,
@@ -2056,9 +2074,9 @@ def _build_startup_briefing() -> str | None:
     chars_list = (chars_data or {}).get("characters") if chars_data else None
 
     adventure_text = None
-    if (game_state.get("adventure_loaded")
-            and os.path.exists(state_mod.ADVENTURE_FILE)):
-        with open(state_mod.ADVENTURE_FILE, "r", encoding="utf-8") as f:
+    _adv_path = state_mod.current_adventure_path(game_state)
+    if game_state.get("adventure_loaded") and os.path.exists(_adv_path):
+        with open(_adv_path, "r", encoding="utf-8") as f:
             adventure_text = f.read()
 
     if conversation_history:
