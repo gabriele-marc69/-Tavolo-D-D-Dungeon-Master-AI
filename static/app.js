@@ -1748,9 +1748,13 @@ if (partyLoadBtn) partyLoadBtn.addEventListener('click', async () => {
   });
   const d = await r.json();
   if (d.error) { alert('⚠ ' + d.error); return; }
-  await refreshState();
+  await refreshState();          // aggiorna gameState + colonna giocatori
   await loadCharsIntoForm();
   renderCharsPreview(d.characters);
+  // Chiudi il modale così la colonna sinistra (dietro al modale) con i
+  // giocatori appena caricati è subito visibile.
+  closeModal('chars');
+  renderPlayers();               // ridisegno esplicito della colonna
   alert(`🎒 Party caricato: ${d.count} personagg${d.count === 1 ? 'io' : 'i'}.`);
 });
 
