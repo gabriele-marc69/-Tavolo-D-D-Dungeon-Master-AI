@@ -311,6 +311,9 @@ def strip_narrative(text: str) -> str:
     out = RE_SPELL_CAST.sub("", out)
     out = RE_MAP_BLOCK.sub("", out)
     out = RE_MAP_TAG_BLOCK.sub("", out)
+    # mappa ASCII NUDA (senza marcatori) o dentro un code-fence: toglila dal
+    # testo chat (va solo nel riquadro mappa, dove la rende extract_map).
+    out = _strip_bare_grid(out)
     out = RE_AI_FOOTER.sub("", out)
     # PAUSA SU TIRO UMANO: se è presente il sentinel HALT_HUMAN_ROLL, taglia
     # qui la narrazione (qualunque cosa il DM abbia scritto dopo il tiro
@@ -428,11 +431,97 @@ def extract_map(text: str) -> str | None:
     """Estrae la mappa ASCII da MAP_START…MAP_END (forma canonica) o dal
     tag <MAP>…</MAP> (forma alternativa che alcuni modelli emettono).
     Restituisce il blocco interno, già normalizzato dei caratteri non
-    canonici (vedi _normalize_map_chars)."""
+    canonici (vedi _normalize_map_chars).
+
+    FALLBACK: se mancano del tutto i marcatori (alcuni modelli — DeepSeek
+    in primis — disegnano la griglia ASCII NUDA, magari dentro un blocco
+    ``` ``` ```), prova a riconoscere comunque una griglia di mappa
+    (vedi _extract_bare_grid). Così la mappa appare anche quando il DM
+    ignora la richiesta di racchiuderla nei marcatori."""
     m = RE_MAP.search(text) or RE_MAP_TAG.search(text)
-    if not m:
+    if m:
+        return _normalize_map_chars(m.group(1).rstrip())
+    return _extract_bare_grid(text)
+
+
+def _looks_like_map_row(line: str) -> bool:
+    """Una riga sembra una riga di mappa se: lunga ≥5, fatta quasi solo di
+    caratteri di mappa (canonici o alias di muro), e contiene almeno un
+    muro '#' o un pavimento '.'. La soglia alta esclude la prosa (parole
+    con lettere non-mappa: b,d,h,i,l,n,r,u…)."""
+    s = line.rstrip()
+    if len(s) < 5:
+        return False
+    mapchars = sum(1 for ch in s if ch in _CANON_MAP_CHARS or ch in _MAP_ALIASES)
+    if mapchars / len(s) < 0.85:
+        return False
+    return any(ch in "#." for ch in s)
+
+
+def _find_bare_grid_span(lines: list[str]) -> tuple[int, int] | None:
+    """Indici [start, end) del più lungo blocco contiguo di righe "da mappa"
+    in `lines`, se qualifica come mappa nuda (≥5 righe, larghezze simili,
+    abbastanza muri). None altrimenti. Condiviso da estrazione e rimozione
+    così le due restano sempre coerenti."""
+    best = (0, 0)
+    best_len = 0
+    cur_start: int | None = None
+    for i, ln in enumerate(lines):
+        if _looks_like_map_row(ln):
+            if cur_start is None:
+                cur_start = i
+        else:
+            if cur_start is not None:
+                if i - cur_start > best_len:
+                    best, best_len = (cur_start, i), i - cur_start
+                cur_start = None
+    if cur_start is not None and len(lines) - cur_start > best_len:
+        best, best_len = (cur_start, len(lines)), len(lines) - cur_start
+    if best_len < 5:
         return None
-    return _normalize_map_chars(m.group(1).rstrip())
+    rows = [lines[k].rstrip() for k in range(best[0], best[1])]
+    widths = [len(r) for r in rows]
+    if max(widths) - min(widths) > max(widths) * 0.5:
+        return None        # troppo irregolare: probabile non-mappa
+    joined = "".join(rows)
+    walls = sum(1 for ch in joined if ch == "#" or ch in _MAP_ALIASES)
+    if walls < len(rows):  # almeno ~1 muro per riga in media
+        return None
+    return best
+
+
+def _extract_bare_grid(text: str) -> str | None:
+    """Riconosce una mappa ASCII NUDA (senza marcatori MAP_START/<MAP>),
+    eventualmente dentro un blocco ``` ```. Restituisce la griglia
+    normalizzata, o None se non c'è un blocco abbastanza simile a una mappa."""
+    if not text:
+        return None
+    lines = text.replace("```", "").splitlines()
+    span = _find_bare_grid_span(lines)
+    if not span:
+        return None
+    rows = [lines[k].rstrip() for k in range(span[0], span[1])]
+    return _normalize_map_chars("\n".join(rows))
+
+
+def _strip_bare_grid(text: str) -> str:
+    """Toglie dalla narrazione visibile una mappa ASCII NUDA (senza
+    marcatori) e gli eventuali code-fence ``` che la racchiudono — così la
+    griglia finisce SOLO nel riquadro mappa, non nel testo della chat."""
+    if not text:
+        return text
+    # 1) code-fence il cui contenuto è una mappa → via tutto il blocco
+    def _fence_repl(m: "re.Match") -> str:
+        inner = m.group(1)
+        return "" if _find_bare_grid_span(inner.splitlines()) else m.group(0)
+    text = re.sub(r"```[^\n]*\n([\s\S]*?)```", _fence_repl, text)
+    # 2) griglia nuda non recintata → togli le sue righe
+    lines = text.splitlines()
+    span = _find_bare_grid_span(lines)
+    if span:
+        del lines[span[0]:span[1]]
+        text = "\n".join(lines)
+    return text
 
 
 # Set di caratteri di mappa CANONICI: tutto ciò che non è in questo set
