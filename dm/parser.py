@@ -35,8 +35,16 @@ RE_MUSIC     = re.compile(r"<MUSIC>([\s\S]*?)</MUSIC>")
 RE_SPRITE    = re.compile(r"<SPRITE>([\s\S]*?)</SPRITE>")
 RE_SCENE     = re.compile(r"<SCENE>([\s\S]*?)</SCENE>")
 RE_SPELL_CAST = re.compile(r"<SPELL_CAST>([\s\S]*?)</SPELL_CAST>")
-RE_MAP       = re.compile(r"MAP_START\s*\n([\s\S]*?)\nMAP_END")
-RE_MAP_BLOCK = re.compile(r"MAP_START[\s\S]*?MAP_END\s*", re.IGNORECASE)
+# Decorazioni che i modelli mettono attorno ai marcatori: parentesi quadre
+# ([MAP_START]), grassetto (**MAP_START**), backtick, cancelletti, due punti
+# finali (MAP_START:). Le tolleriamo così il blocco viene riconosciuto lo
+# stesso. _MK_L = a sinistra del marcatore, _MK_R = a destra.
+_MK_L = r"[ \t]*[\[\*`#_~>\-]*[ \t]*"
+_MK_R = r"[ \t]*[\]\*`:_~\-]*[ \t]*"
+RE_MAP       = re.compile(
+    _MK_L + r"MAP_START" + _MK_R + r"\n([\s\S]*?)\n" + _MK_L + r"MAP_END" + _MK_R)
+RE_MAP_BLOCK = re.compile(
+    _MK_L + r"MAP_START" + r"[\s\S]*?" + r"MAP_END" + _MK_R, re.IGNORECASE)
 # Tag <MAP>…</MAP>: forma alternativa che alcuni modelli usano spontaneamente.
 # Va trattata ESATTAMENTE come MAP_START…MAP_END: estratta come mappa,
 # rimossa dalla narrazione visibile.
