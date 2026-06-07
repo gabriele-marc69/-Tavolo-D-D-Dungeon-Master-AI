@@ -1491,11 +1491,64 @@ def gender_list() -> list[str]:
     return list(GENDERS)
 
 
+def reset_combat_state(sheet: dict) -> dict:
+    """Riporta una scheda allo stato 'fresco' di inizio partita: HP al
+    MASSIMO, HP temporanei a 0, tutti gli slot incantesimo ripristinati,
+    death-saves azzerati (il PG viene RESUSCITATO anche se era morto),
+    condizioni e ispirazione ripulite, status 'alive'.
+
+    NON tocca la progressione (XP, livello, oggetti, tesoro, magic_items):
+    resetta solo i parametri di gioco riportandoli 'al massimo'. Usato dal
+    tasto "Nuova" così la nuova partita riparte coi PG in piena forma.
+    Modifica in place e restituisce la scheda."""
+    if not isinstance(sheet, dict):
+        return sheet
+
+    # HP → pieni, temporanei azzerati, book-keeping anti-drift ripulito.
+    hp = sheet.setdefault("hp", {})
+    if isinstance(hp, dict):
+        try:
+            mx = int(hp.get("max"))
+        except (TypeError, ValueError):
+            mx = None
+        if mx is not None and mx > 0:
+            hp["current"] = mx
+        hp["temp"] = 0
+        for k in ("_last_msg_id", "_last_damage", "_last_heal", "_last_after"):
+            hp.pop(k, None)
+
+    # Death saves → azzerati e PG vivo (resuscita i morti permanenti).
+    ds = sheet.get("death_saves")
+    if not isinstance(ds, dict):
+        ds = {}
+        sheet["death_saves"] = ds
+    ds["successes"] = 0
+    ds["failures"]  = 0
+    ds["stable"]    = False
+    ds["dead"]      = False
+
+    sheet["status"]      = "alive"
+    sheet["conditions"]  = []
+    sheet["inspiration"] = False
+
+    # Slot incantesimo → tutti gli "used" a 0.
+    spells = sheet.get("spells")
+    if isinstance(spells, dict):
+        slots = spells.get("slots")
+        if isinstance(slots, dict):
+            for sl in slots.values():
+                if isinstance(sl, dict):
+                    sl["used"] = 0
+
+    return sheet
+
+
 __all__ = [
     "SPECIES", "CLASSES", "BACKGROUNDS", "ALIGNMENTS", "GENDERS",
     "STANDARD_ARRAY", "ABILITIES", "CASTER_TYPE", "SPELL_ABILITY",
     "COIN_KINDS", "CLASS_START_GOLD", "empty_treasure",
     "generate_sheet", "recompute_derived", "upgrade_sheet",
+    "reset_combat_state",
     "apply_item_modifiers", "sync_bases_from_update",
     "apply_level_progression", "normalize_magic_items",
     "species_list", "class_list",

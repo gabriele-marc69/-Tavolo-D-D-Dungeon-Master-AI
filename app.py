@@ -790,11 +790,16 @@ def api_new_game():
                     os.remove(p)
             except OSError as e:
                 print(f"[NEW_GAME] impossibile cancellare {p}: {e}", flush=True)
-        # riusa i personaggi salvati su personaggi.json
+        # riusa i personaggi salvati su personaggi.json, RESETTANDOLI alla
+        # piena forma: HP al massimo, slot incantesimo ripieni, death-saves
+        # azzerati (PG morti resuscitati), condizioni/ispirazione pulite.
+        # La progressione (XP, livello, oggetti, tesoro) resta intatta.
         if keep_chars:
             chars_data = state_mod.load_characters()
             sheets = (chars_data or {}).get("characters") or []
             if sheets:
+                for s in sheets:
+                    char_mod.reset_combat_state(s)
                 game_state["players"] = [
                     {"name": s.get("name"),
                      "type": s.get("player_type", "human"),
@@ -802,6 +807,11 @@ def api_new_game():
                     for s in sheets
                 ]
                 game_state["characters_loaded"] = True
+                # Persisti il reset così le schede su disco (personaggi.json
+                # e runtime/personaggi/*.json) ripartono anch'esse al massimo.
+                state_mod.sync_characters_from_players(game_state["players"])
+                for s in sheets:
+                    state_mod.save_character_file(s)
         state_mod.save_state(game_state)
         state_mod.save_conversation(conversation_history)
 
