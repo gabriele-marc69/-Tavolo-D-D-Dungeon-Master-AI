@@ -5,7 +5,7 @@ claudevv/
 .claude/
 
 # ─── Stato di gioco generato a runtime ───────────────────────────────
-runtime/*.json
+runtime/
 avventura.txt
 
 # ─── Profili browser Playwright ──────────────────────────────────────

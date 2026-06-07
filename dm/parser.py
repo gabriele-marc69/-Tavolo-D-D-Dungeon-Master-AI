@@ -25,11 +25,28 @@ RE_THINK     = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
 RE_STATE     = re.compile(r"<STATE_UPDATE>([\s\S]*?)</STATE_UPDATE>")
 RE_CHAR      = re.compile(r"<CHAR_UPDATE>([\s\S]*?)</CHAR_UPDATE>")
 RE_ROLL_REQ  = re.compile(r"<ROLL_REQ>([\s\S]*?)</ROLL_REQ>")
+# Sentinel posato dopo il PRIMO <ROLL_REQ> di un PG umano: la narrazione
+# successiva (esiti speculati, conseguenze "anticipate" dal DM) va TAGLIATA
+# perché il giocatore non ha ancora lanciato il dado. I tag strutturati che
+# seguono (MAP, STATE_UPDATE, CHAR_UPDATE) restano comunque processati.
+HALT_HUMAN_ROLL = "<<HALT_HUMAN_ROLL>>"
+RE_HALT_HUMAN_ROLL = re.compile(re.escape(HALT_HUMAN_ROLL))
 RE_MUSIC     = re.compile(r"<MUSIC>([\s\S]*?)</MUSIC>")
 RE_SPRITE    = re.compile(r"<SPRITE>([\s\S]*?)</SPRITE>")
 RE_SCENE     = re.compile(r"<SCENE>([\s\S]*?)</SCENE>")
+RE_SPELL_CAST = re.compile(r"<SPELL_CAST>([\s\S]*?)</SPELL_CAST>")
 RE_MAP       = re.compile(r"MAP_START\s*\n([\s\S]*?)\nMAP_END")
 RE_MAP_BLOCK = re.compile(r"MAP_START[\s\S]*?MAP_END\s*", re.IGNORECASE)
+# Tag <MAP>…</MAP>: forma alternativa che alcuni modelli usano spontaneamente.
+# Va trattata ESATTAMENTE come MAP_START…MAP_END: estratta come mappa,
+# rimossa dalla narrazione visibile.
+RE_MAP_TAG   = re.compile(r"<MAP>\s*([\s\S]*?)\s*</MAP>", re.IGNORECASE)
+RE_MAP_TAG_BLOCK = re.compile(r"<MAP>[\s\S]*?</MAP>\s*", re.IGNORECASE)
+# Etichette delle barre dei code-block delle chat web (pulsanti Copia/
+# Scarica/Copy/Download/text che l'estrazione innerText cattura come righe).
+RE_CODE_TOOLBAR = re.compile(
+    r"(?im)^\s*(?:copia|copy|scarica|download|text|json|markdown)\s*$",
+)
 RE_DEBUG_LN  = re.compile(r"^\s*\*(?:Calcolo|Formula Base|Dettaglio).*?\*\s*$",
                           re.IGNORECASE | re.MULTILINE)
 
@@ -107,19 +124,158 @@ RE_LEAK_LINE = re.compile(
     r"[^\n:]{0,28}:.*$"
 )
 
+# HP a video dei NEMICI: il DM tende a scrivere gli HP delle creature nella
+# narrazione (es. "Goblin (7/9 HP)", "HP: 12/15", "5 HP rimasti"). Gli HP del
+# party sono già nel pannello schede, quindi togliamo i readout numerici di HP
+# dalla prosa visibile — così non trapelano gli HP dei mostri. Tre forme:
+#   1) parentetica:  (7/9 HP)  [HP 12]  (PF 5/8)
+#   2) etichettata:  HP: 7/9   PF 12/15
+#   3) "rimasti":    7 HP rimasti / gli restano 5 PF
+_HP_WORD = r"(?:hp|pf|punti\s+ferita)"
+RE_HP_READOUT = re.compile(
+    r"(?i)"
+    r"[\(\[]\s*" + _HP_WORD + r"\s*\d{1,3}(?:\s*/\s*\d{1,3})?\s*[\)\]]"  # (HP 12)
+    r"|"
+    r"[\(\[]\s*\d{1,3}(?:\s*/\s*\d{1,3})?\s*" + _HP_WORD + r"\s*[\)\]]"  # (7/9 HP)
+    r"|"
+    r"\b" + _HP_WORD + r"\s*[:=]\s*\d{1,3}(?:\s*/\s*\d{1,3})?\b"         # HP: 7/9
+    r"|"
+    r"\b\d{1,3}\s*" + _HP_WORD + r"\s+(?:rimast\w+|restant\w+|rimanent\w+)\b"
+)
+
 
 # ────────────────────────────────────────────────────────────────────────
 # Pulizia
 # ────────────────────────────────────────────────────────────────────────
 
+# Etichette di interfaccia che alcune chat web antepongono alla risposta
+# come testo per screen-reader (es. Claude.ai con locale italiano:
+# "Claude ha risposto:"). L'estrazione via innerText le cattura: da togliere.
+RE_UI_LABEL = re.compile(
+    r"(?:^|\n)[ \t]*(?:Claude|Assistant|Assistente|ChatGPT|Gemini|DeepSeek|"
+    r"Grok|Qwen)\s+(?:ha\s+(?:risposto|detto|scritto)|said|replied|"
+    r"responded)[ \t]*:[ \t]*",
+    re.IGNORECASE,
+)
+
+
+def _norm_cmp(s: str) -> str:
+    """Forma normalizzata per il CONFRONTO fra testi: senza markdown, senza
+    punteggiatura di coda, whitespace collassato, minuscolo. Così due copie
+    che differiscono solo per markdown o punteggiatura risultano uguali."""
+    s = re.sub(r"[*_`#>~]+", "", s)
+    s = re.sub(r"\s+", " ", s).strip().lower()
+    return s.rstrip(" .!?,;:—-…")
+
+
+def _same_text(a: str, b: str) -> bool:
+    """True se due testi sono 'la stessa cosa' a meno di markdown,
+    punteggiatura di coda o lieve troncamento (copia raddoppiata)."""
+    a, b = _norm_cmp(a), _norm_cmp(b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    lo, hi = (a, b) if len(a) <= len(b) else (b, a)
+    return len(lo) >= 25 and hi.startswith(lo) and (len(hi) - len(lo)) <= 4
+
+
+def _dedup_consecutive(units: list, min_len: int) -> list:
+    """Rimuove ogni elemento uguale (per _same_text) a quello tenuto prima.
+    Salta il confronto sulle unità troppo corte (sotto min_len)."""
+    out: list = []
+    for u in units:
+        if out and len(_norm_cmp(u)) >= min_len and _same_text(out[-1], u):
+            continue
+        out.append(u)
+    return out
+
+
+def _dehalve(units: list) -> list:
+    """Se `units` è una sequenza raddoppiata [A,B,…][A,B,…], restituisce
+    solo la prima metà."""
+    m = len(units)
+    if m >= 2 and m % 2 == 0:
+        first, second = units[: m // 2], units[m // 2:]
+        if (all(_same_text(a, b) for a, b in zip(first, second))
+                and any(len(_norm_cmp(x)) >= 15 for x in first)):
+            return first
+    return units
+
+
+def _collapse_doubled(s: str) -> str:
+    """Collassa un testo che è la stessa cosa ripetuta due volte di fila
+    (separata da whitespace; la seconda copia può essere markdown grezzo o
+    leggermente troncata): restituisce una sola copia."""
+    norm = _norm_cmp(s)
+    L = len(norm)
+    if L < 60:
+        return s
+    half = L // 2
+    for h in range(max(1, half - 6), half + 7):
+        if _same_text(norm[:h], norm[h:]):
+            # ritaglia la prima copia nel testo ORIGINALE: conta i caratteri
+            # di confronto (markdown escluso) finché si raggiunge `h`.
+            count, cut, prev_ws = 0, len(s), False
+            for i, ch in enumerate(s):
+                if ch in "*_`#>~":
+                    continue
+                ws = ch.isspace()
+                if not ws or not prev_ws:
+                    count += 1
+                prev_ws = ws
+                if count >= h:
+                    cut = i + 1
+                    break
+            return s[:cut].strip()
+    return s
+
+
+def _dedup_sentences(block: str) -> str:
+    """Dentro un blocco, rimuove le FRASI consecutive duplicate (riga per
+    riga). Usato solo sulla narrazione finale (testo già privo di tag)."""
+    out_lines = []
+    for line in block.split("\n"):
+        sents = re.split(r"(?<=[.!?…])\s+", line)
+        if len(sents) > 1:
+            sents = _dedup_consecutive(sents, min_len=25)
+        out_lines.append(" ".join(sents))
+    return "\n".join(out_lines)
+
+
+def _dedup_response(text: str, deep: bool = False) -> str:
+    """Collassa le risposte duplicate dalle chat web (es. Claude.ai, che
+    rimanda il messaggio raddoppiato — preceduto da un'etichetta UI e con
+    una copia in markdown grezzo). Toglie l'etichetta, poi collassa la
+    ripetizione a livello di blocco e di intero messaggio. `deep=True`
+    aggiunge la dedup a livello di FRASE: usarla SOLO sulla narrazione
+    finale (testo già privo di mappa e tag)."""
+    if not text:
+        return text
+    s = RE_UI_LABEL.sub("\n", text).strip()
+    blocks = re.split(r"\n{2,}", s)
+    if len(blocks) >= 2:
+        blocks = _dedup_consecutive(_dehalve(blocks), min_len=15)
+        s = "\n\n".join(blocks).strip()
+    if deep:
+        s = "\n\n".join(_dedup_sentences(b)
+                        for b in re.split(r"\n{2,}", s))
+    return _collapse_doubled(s)
+
+
 def clean_text(text: str) -> str:
-    """Rimuove blocchi <think>, righe di debug, spazi multipli eccessivi.
-    NON rimuove tag STATE_UPDATE/CHAR_UPDATE/ROLL_REQ (gestiti separatamente)."""
+    """Rimuove blocchi <think>, righe di debug, spazi multipli eccessivi e
+    collassa le risposte duplicate (chat web che rimandano il messaggio due
+    volte). NON rimuove i tag STATE_UPDATE/CHAR_UPDATE/ROLL_REQ
+    (gestiti separatamente)."""
     if not text:
         return ""
     out = RE_THINK.sub("", text)
     out = RE_DEBUG_LN.sub("", out)
+    # toolbar dei code-block delle chat web ("Copia", "Scarica", ecc.)
+    out = RE_CODE_TOOLBAR.sub("", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
+    out = _dedup_response(out)
     return out.strip()
 
 
@@ -131,6 +287,9 @@ def strip_tags(text: str) -> str:
     out = RE_MUSIC.sub("", out)
     out = RE_SPRITE.sub("", out)
     out = RE_SCENE.sub("", out)
+    out = RE_SPELL_CAST.sub("", out)
+    out = RE_MAP_TAG_BLOCK.sub("", out)
+    out = RE_HALT_HUMAN_ROLL.sub("", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out.strip()
 
@@ -149,8 +308,17 @@ def strip_narrative(text: str) -> str:
     out = RE_MUSIC.sub("", out)
     out = RE_SPRITE.sub("", out)
     out = RE_SCENE.sub("", out)
+    out = RE_SPELL_CAST.sub("", out)
     out = RE_MAP_BLOCK.sub("", out)
+    out = RE_MAP_TAG_BLOCK.sub("", out)
     out = RE_AI_FOOTER.sub("", out)
+    # PAUSA SU TIRO UMANO: se è presente il sentinel HALT_HUMAN_ROLL, taglia
+    # qui la narrazione (qualunque cosa il DM abbia scritto dopo il tiro
+    # umano è un esito anticipato — il giocatore deve ancora tirare).
+    halt = RE_HALT_HUMAN_ROLL.search(out)
+    if halt:
+        out = out[:halt.start()].rstrip()
+    out = RE_HALT_HUMAN_ROLL.sub("", out)
     # applica più volte: sezioni adiacenti possono lasciare residui che
     # diventano stop-anchor per altre sezioni al passaggio successivo
     for _ in range(3):
@@ -160,9 +328,20 @@ def strip_narrative(text: str) -> str:
         out = new_out
     # righe sciolte che spoilerano nemici/tesori
     out = RE_LEAK_LINE.sub("", out)
+    # readout numerici di HP nella prosa (nascondono gli HP dei nemici;
+    # quelli del party sono già nel pannello schede)
+    out = RE_HP_READOUT.sub("", out)
+    # parentesi/spazi rimasti vuoti dopo il taglio dei readout HP
+    out = re.sub(r"[ \t]*[\(\[]\s*[\)\]]", "", out)
+    out = re.sub(r"[ \t]{2,}", " ", out)
     # rimuovi separatori "---" rimasti orfani
     out = re.sub(r"(?m)^\s*---+\s*$", "", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
+    # Dedup FINALE della narrazione: la chat web può raddoppiare il
+    # messaggio (con un blocco tag MAP/STATE FRA le due copie, oppure
+    # ripetendo solo l'ultima frase). Qui i tag sono già stati tolti →
+    # dedup profonda (blocco + frase) sul testo di pura narrazione.
+    out = _dedup_response(out, deep=True)
     return out.strip()
 
 
@@ -222,17 +401,16 @@ def _as_dicts(obj: Any) -> list[dict]:
 
 
 def extract_state(text: str) -> dict | None:
-    """Restituisce il PRIMO <STATE_UPDATE> trovato come dict, o None.
-    Tollera payload array: unisce gli oggetti in un unico dict."""
-    m = RE_STATE.search(text)
-    if not m:
-        return None
-    dicts = _as_dicts(_safe_json(m.group(1)))
-    if not dicts:
-        return None
+    """Unisce TUTTI i <STATE_UPDATE> del testo in un unico dict, o None.
+    Tollera payload array. Se il DM emette più STATE_UPDATE in un turno
+    (es. pre-azione + post-azione) i campi vengono fusi nell'ordine:
+    l'ULTIMO valore di ogni chiave vince."""
     upd: dict = {}
-    for d in dicts:
-        upd.update(d)
+    for m in RE_STATE.finditer(text):
+        for d in _as_dicts(_safe_json(m.group(1))):
+            upd.update(d)
+    if not upd:
+        return None
     if isinstance(upd.get("map_ascii"), str):
         upd["map_ascii"] = upd["map_ascii"].replace("\\n", "\n")
     return upd
@@ -247,8 +425,84 @@ def extract_chars(text: str) -> list[dict]:
 
 
 def extract_map(text: str) -> str | None:
-    m = RE_MAP.search(text)
-    return m.group(1).rstrip() if m else None
+    """Estrae la mappa ASCII da MAP_START…MAP_END (forma canonica) o dal
+    tag <MAP>…</MAP> (forma alternativa che alcuni modelli emettono).
+    Restituisce il blocco interno, già normalizzato dei caratteri non
+    canonici (vedi _normalize_map_chars)."""
+    m = RE_MAP.search(text) or RE_MAP_TAG.search(text)
+    if not m:
+        return None
+    return _normalize_map_chars(m.group(1).rstrip())
+
+
+# Set di caratteri di mappa CANONICI: tutto ciò che non è in questo set
+# viene normalizzato secondo _MAP_ALIASES (o cade su muro '#' di default).
+# Lo spazio resta spazio (fog).
+_CANON_MAP_CHARS = set("#.*@CESX+<>~Tt,of=$MgkDP ")
+
+# Alias comuni che i modelli usano spontaneamente: caratteri box-drawing,
+# lettere decorative, varianti di muro. Normalizziamo al set canonico in
+# modo intelligente invece di trattare TUTTO come muro: una porta '|' può
+# essere voluta come passaggio verticale, un '+' negli incroci box-drawing
+# è ambiguo (porta o angolo di muro?) — qui scegliamo l'interpretazione
+# più conservativa: tutto il box-drawing diventa muro '#', le lettere
+# decorative comuni vengono mappate sul tile pixel-art più simile.
+_MAP_ALIASES = {
+    # box-drawing semplici → muro
+    "|": "#", "-": "#", "_": "#", "/": "#", "\\": "#",
+    # box-drawing Unicode → muro (cornici di stanza, corridoi, angoli)
+    "═": "#", "║": "#", "╔": "#", "╗": "#", "╚": "#", "╝": "#",
+    "╠": "#", "╣": "#", "╦": "#", "╩": "#", "╬": "#",
+    "─": "#", "│": "#", "┌": "#", "┐": "#", "└": "#", "┘": "#",
+    "├": "#", "┤": "#", "┬": "#", "┴": "#", "┼": "#",
+    "━": "#", "┃": "#", "┏": "#", "┓": "#", "┗": "#", "┛": "#",
+    "█": "#", "▓": "#", "▒": "#", "░": ".",
+    # lettere decorative spesso usate come bordi
+    "A": "#", "B": "#", "W": "#", "H": "#",
+    # alias di tile narrativi
+    "b": "$", "c": "C", "e": "E", "s": "S", "x": "X",
+    "m": "M", "p": "P",  # mostro/PG in minuscolo
+    "·": ".", "•": ".", "◦": ".",
+    "O": "o",  # O grande → masso
+    # Cifre attaccate a un tile (etichette tipo S1, S2, M1): il DM numera
+    # i tile per distinguere più PNG/mostri, ma le cifre NON sono canoniche
+    # e diventerebbero MURI in mezzo al pavimento, bucando la mappa. Le
+    # trattiamo come pavimento '.' (neutro), così "S2" → "S." e la
+    # geometria resta intatta. ('0' = masso 'o' per retro-compatibilità.)
+    "0": "o",
+    "1": ".", "2": ".", "3": ".", "4": ".",
+    "5": ".", "6": ".", "7": ".", "8": ".", "9": ".",
+    # acqua e simboli
+    "≈": "~", "∼": "~",
+    # PNG/social emoji-like
+    "?": "E",
+    # carro/oggetto generico → masso
+    "%": "o",
+}
+
+
+def _normalize_map_chars(block: str) -> str:
+    """Converte i caratteri non canonici nei tile pixel-art conosciuti.
+
+    Strategia: 1) prima passa attraverso _MAP_ALIASES (es. box-drawing →
+    '#', '0'/'O' → 'o' masso, 'b' → '$' tesoro); 2) tutto ciò che non è
+    né canonico né alias → '#' (muro), così la mappa resta coerente anche
+    quando il modello usa simboli imprevisti per delimitare le pareti.
+    Spazi → spazi (fog/area non disegnata)."""
+    if not block:
+        return block
+    out_lines: list[str] = []
+    for line in block.splitlines():
+        chars = []
+        for ch in line:
+            if ch in _CANON_MAP_CHARS:
+                chars.append(ch)
+            elif ch in _MAP_ALIASES:
+                chars.append(_MAP_ALIASES[ch])
+            else:
+                chars.append("#")
+        out_lines.append("".join(chars))
+    return "\n".join(out_lines)
 
 
 def extract_music(text: str) -> list[dict]:
@@ -278,14 +532,27 @@ def _normalize_grid(rows: Any, size: int) -> list[str] | None:
 
 
 def extract_sprites(text: str) -> dict[str, list[str]]:
-    """Tutti i <SPRITE> come dict {id: griglia 10×10}. Il DM disegna in
-    pixel-art (palette fantasy 16 colori, cifre esadecimali) gli elementi
-    della scena; `id` è il carattere di cella che la sprite raffigura."""
+    """Tutti i <SPRITE> come dict {id: griglia pixel-art quadrata}. Il DM
+    disegna in pixel-art (palette fantasy 16 colori, cifre esadecimali)
+    gli elementi della scena; `id` è il carattere di cella che la sprite
+    raffigura.
+
+    Dimensione preferita: 16×16 (16 righe da 16 cifre). Accetta anche
+    sprite più piccole (8–16 per lato) per tolleranza coi modelli che
+    emettono 10×10 in stile vecchio: il renderer le scala su 16×16 via
+    nearest-neighbor."""
     out: dict[str, list[str]] = {}
     for m in RE_SPRITE.finditer(text):
         for d in _as_dicts(_safe_json(m.group(1))):
             sid = str(d.get("id") or "").strip()
-            grid = _normalize_grid(d.get("rows"), 10)
+            rows = d.get("rows")
+            # Dimensione naturale = numero di righe fornite, clampato in
+            # [8, 16]. Default 16 se mancante o non lista.
+            if isinstance(rows, list) and rows:
+                natural = max(8, min(16, len(rows)))
+            else:
+                natural = 16
+            grid = _normalize_grid(rows, natural)
             if sid and grid:
                 out[sid] = grid
     return out
@@ -321,6 +588,16 @@ def extract_roll_requests(text: str) -> list[dict]:
     return out
 
 
+def extract_spell_casts(text: str) -> list[dict]:
+    """Tutti i <SPELL_CAST> come lista di dict {by, spell, level}: il DM
+    li emette quando un PG/PNG lancia un incantesimo, così il sistema può
+    scalare lo slot corrispondente sulla scheda."""
+    out: list[dict] = []
+    for m in RE_SPELL_CAST.finditer(text):
+        out.extend(_as_dicts(_safe_json(m.group(1))))
+    return out
+
+
 # ────────────────────────────────────────────────────────────────────────
 # Risoluzione ROLL_REQ
 # ────────────────────────────────────────────────────────────────────────
@@ -339,18 +616,23 @@ def resolve_roll_requests(
     human = {(n or "").strip().lower() for n in (human_names or []) if n}
     results: list[dict] = []
     pending: list[dict] = []
+    halt_added = [False]   # nonlocal flag: sentinel posato una sola volta
 
     def _sub(match: re.Match) -> str:
         payloads = _as_dicts(_safe_json(match.group(1)))
         if not payloads:
             return f"[ROLL_REQ malformata: {match.group(1)[:60]}]"
         parts: list[str] = []
+        saw_human = False
         for payload in payloads:
             by = (payload.get("by") or "").strip()
             if by and by.lower() in human:
-                # tiro di un PG umano: lo lancia il giocatore, non il sistema
+                # tiro di un PG umano: lo lancia il giocatore, non il sistema.
+                # NON aggiungiamo testo "tira XdY" inline nella narrazione:
+                # il riquadro dadi del frontend mostra già nome, espressione
+                # e ragione del tiro. Duplicarlo in chat era ridondante.
                 pending.append(payload)
-                parts.append(_format_roll_pending(payload))
+                saw_human = True
                 continue
             try:
                 r = rules.parse_roll_request(payload)
@@ -363,7 +645,14 @@ def resolve_roll_requests(
             info["by"] = payload.get("by")
             results.append(info)
             parts.append(_format_roll_inline(r, payload))
-        return " ".join(parts)
+        out = " ".join(parts)
+        # Sentinel dopo il PRIMO ROLL_REQ umano: la narrazione successiva
+        # viene tagliata da strip_narrative (il DM tende ad anticipare
+        # l'esito, ma il giocatore non ha ancora tirato).
+        if saw_human and not halt_added[0]:
+            halt_added[0] = True
+            out += ("\n" if out else "") + HALT_HUMAN_ROLL
+        return out
 
     new_text = RE_ROLL_REQ.sub(_sub, text)
     return new_text, results, pending
@@ -421,11 +710,182 @@ def _format_roll_inline(r: rules.RollResult, payload: dict) -> str:
 # Applicazione a game_state
 # ────────────────────────────────────────────────────────────────────────
 
-def apply_state_update(state: dict, update: dict) -> None:
-    """Aggiorna game_state con i campi presenti nello STATE_UPDATE."""
+# Campi di game_state che il DM NON può sovrascrivere via STATE_UPDATE.
+# Sono sotto il controllo del sistema (sprite e mappa derivano dai tag
+# dedicati, i player dalle schede generate, i pending_* dai cicli interni,
+# l'avventura dal flusso di caricamento). Evitare il clobber accidentale:
+# un payload con queste chiavi viene ignorato silenziosamente per quei
+# campi, gli altri campi dell'update vengono applicati normalmente.
+_STATE_UPDATE_BLOCKED = frozenset({
+    "players",
+    "rolls_log",
+    "revealed_tiles",
+    "map_base", "map_full", "map_ascii",
+    "map_width", "map_height",
+    "sprites", "music",
+    "pending_rolls", "pending_roll_feedback", "pending_dm_notes",
+    "adventure_beats", "adventure_index", "adventure_loaded",
+    "session_start",
+    # Flag di servizio: gestiti separatamente in app.py prima dell'apply
+    # (vedi apply_long_rest). Non vanno mai a finire dentro game_state.
+    "long_rest", "session_end",
+})
+
+
+def _filter_hp_update(sheet_hp: dict, hp_upd: dict,
+                      message_id: str | None = None) -> dict:
+    """Filtra un aggiornamento HP in arrivo dal DM per evitare il "reset a
+    HP pieni" che il modello tende a inviare a ogni messaggio anche quando
+    il PG non ha preso danni né è stato curato.
+
+    Regole base:
+      • hp.damage:N → sottrae N agli HP correnti (clamp a 0).
+      • hp.heal:N   → aggiunge N (clamp al max).
+      • hp.current  → applicato SOLO se è strettamente inferiore agli HP
+                      correnti (= ferita reale) oppure se l'update porta
+                      anche hp.max (es. level-up o cambio CON COS). Un
+                      hp.current uguale o superiore al valore in scheda,
+                      senza max esplicito, viene SCARTATO.
+      • hp.max / hp.temp passano sempre.
+
+    Dedup anti-drift fra messaggi (`message_id` = id del messaggio DM):
+      1) Se HP è già stato modificato per QUESTO PG in QUESTO messaggio
+         (più CHAR_UPDATE per lo stesso PG nello stesso turno), gli
+         update HP successivi vengono ignorati: passano solo max/temp.
+      2) Se il DM rispedisce gli STESSI (damage, heal) di un evento già
+         applicato e l'HP corrente coincide con quello LASCIATO da
+         quell'evento (= nulla è cambiato nel frattempo), è una
+         ripetizione narrativa del DM: la richiesta viene SCARTATA per
+         evitare che il PG subisca lo stesso danno a ogni messaggio.
+
+    Restituisce un nuovo dict con SOLO i campi HP che vanno applicati
+    (incluso il book-keeping `_last_*` per il dedup successivo)."""
+    if not isinstance(hp_upd, dict):
+        return {}
+    if not isinstance(sheet_hp, dict):
+        sheet_hp = {}
+    # Dedup 1: stesso messaggio DM già processato per HP di questo PG.
+    if (message_id is not None
+            and sheet_hp.get("_last_msg_id") == message_id):
+        passthrough: dict = {}
+        for k in ("max", "temp"):
+            if k in hp_upd:
+                passthrough[k] = hp_upd[k]
+        return passthrough
+
+    cleaned: dict = {}
+    cur_sheet = sheet_hp.get("current")
+    max_sheet = sheet_hp.get("max")
+    # passa-through di campi non-current
+    for k in ("max", "temp"):
+        if k in hp_upd:
+            cleaned[k] = hp_upd[k]
+    # max esplicito → consenti anche current (level-up o ricalcolo voluto)
+    has_explicit_max = "max" in hp_upd
+    # 1) deltas damage/heal (preferiti — meno fragili)
+    dmg = hp_upd.get("damage")
+    heal = hp_upd.get("heal")
+    if dmg is not None or heal is not None:
+        # Dedup 2: ripetizione di un evento già applicato (damage/heal
+        # identici, HP non cambiato dall'ultima applicazione).
+        last_dmg   = sheet_hp.get("_last_damage")
+        last_heal  = sheet_hp.get("_last_heal")
+        last_after = sheet_hp.get("_last_after")
+        if (last_after is not None
+                and last_dmg == dmg and last_heal == heal
+                and cur_sheet == last_after):
+            return cleaned
+        try:
+            base = int(cur_sheet if cur_sheet is not None
+                       else (max_sheet if max_sheet is not None else 0))
+            delta = -int(dmg or 0) + int(heal or 0)
+            new_cur = base + delta
+            mx = int(cleaned.get("max", max_sheet or 0) or 0)
+            if mx > 0:
+                new_cur = min(mx, new_cur)
+            new_cur = max(0, new_cur)
+            cleaned["current"]     = new_cur
+            cleaned["_last_msg_id"] = message_id
+            cleaned["_last_damage"] = dmg
+            cleaned["_last_heal"]   = heal
+            cleaned["_last_after"]  = new_cur
+        except (TypeError, ValueError):
+            pass
+        return cleaned
+    # 2) hp.current assoluto: filtro anti-drift
+    if "current" in hp_upd:
+        try:
+            new_cur = int(hp_upd["current"])
+        except (TypeError, ValueError):
+            return cleaned
+        # Senza valore in scheda non c'è confronto: accetta (init/migration).
+        if cur_sheet is None:
+            cleaned["current"]      = new_cur
+            cleaned["_last_msg_id"] = message_id
+            cleaned["_last_after"]  = new_cur
+        else:
+            try:
+                cur_int = int(cur_sheet)
+            except (TypeError, ValueError):
+                cur_int = new_cur
+            # Diminuzione = ferita reale, sempre ammessa.
+            if new_cur < cur_int:
+                cleaned["current"]     = new_cur
+                cleaned["_last_msg_id"] = message_id
+                cleaned["_last_damage"] = None
+                cleaned["_last_heal"]   = None
+                cleaned["_last_after"]  = new_cur
+            elif new_cur > cur_int:
+                # Aumento di hp.current: distinguiamo una CURA reale dal
+                # "reset a HP pieni" che il DM tende a rispedire a ogni
+                # messaggio. Max effettivo per il confronto.
+                try:
+                    mx_eff = int(cleaned["max"]) if "max" in cleaned else (
+                        int(max_sheet) if max_sheet is not None else None)
+                except (TypeError, ValueError):
+                    mx_eff = None
+                accept = False
+                # 1) Level-up vero: max esplicito che sale → accetta.
+                if has_explicit_max:
+                    try:
+                        new_max = int(hp_upd["max"])
+                        old_max = int(max_sheet) if max_sheet is not None else 0
+                        if new_max > old_max:
+                            accept = True
+                    except (TypeError, ValueError):
+                        pass
+                # 2) Cura PARZIALE: il nuovo valore resta SOTTO il massimo →
+                # è un aumento reale, non un reset a fondo barra. Senza il
+                # max noto non possiamo distinguerli: in tal caso scartiamo
+                # (comportamento prudente di prima). Un current == max senza
+                # max esplicito resta bloccato (è il reset spurio).
+                if not accept and mx_eff is not None and new_cur < mx_eff:
+                    accept = True
+                if accept:
+                    cleaned["current"]     = new_cur
+                    cleaned["_last_msg_id"] = message_id
+                    cleaned["_last_damage"] = None
+                    cleaned["_last_heal"]   = None
+                    cleaned["_last_after"]  = new_cur
+    return cleaned
+
+
+def apply_state_update(state: dict, update: dict,
+                       message_id: str | None = None) -> None:
+    """Aggiorna game_state con i campi presenti nello STATE_UPDATE.
+
+    Filtra i campi sotto controllo del sistema (vedi _STATE_UPDATE_BLOCKED)
+    così che un DM disattento — o un payload accidentalmente ricco — non
+    possa azzerare i player, la fog, gli sprite o la coda dei pending.
+
+    `message_id` è l'id univoco del messaggio DM corrente: viene passato
+    al filtro HP per deduplicare ripetizioni (vedi _filter_hp_update).
+    """
     if not isinstance(update, dict) or not update:
         return
-    # players_hp è un caso speciale: aggiorna sheet di ogni player
+    # players_hp è un caso speciale: aggiorna sheet di ogni player.
+    # Passa dal filtro anti-drift: un DM che rispedisce HP pieni a ogni
+    # messaggio NON deve poter "curare" il party in automatico.
     if "players_hp" in update:
         for p in state.get("players", []):
             name = p.get("name", "")
@@ -434,13 +894,17 @@ def apply_state_update(state: dict, update: dict) -> None:
                 if isinstance(hp, dict):
                     sheet = p.setdefault("sheet", {})
                     sheet_hp = sheet.setdefault("hp", {})
-                    sheet_hp.update(hp)
+                    cleaned = _filter_hp_update(sheet_hp, hp, message_id)
+                    if cleaned:
+                        sheet_hp.update(cleaned)
                     if sheet_hp.get("current", 1) <= 0:
                         sheet["status"] = "down"
                     else:
                         sheet["status"] = "alive"
         update = {k: v for k, v in update.items() if k != "players_hp"}
-    state.update(update)
+    # Whitelist: applica solo le chiavi non protette.
+    safe = {k: v for k, v in update.items() if k not in _STATE_UPDATE_BLOCKED}
+    state.update(safe)
 
 
 def _deep_merge(dst: dict, src: dict) -> None:
@@ -455,18 +919,48 @@ def _deep_merge(dst: dict, src: dict) -> None:
 
 
 def apply_char_updates(state: dict, updates: list[dict],
-                       on_persist: Any = None) -> None:
+                       on_persist: Any = None,
+                       message_id: str | None = None) -> None:
     """Aggiorna o inserisce le schede personaggio. Se `on_persist` callable,
     viene chiamato con ogni scheda completa (utile per upsert su file).
 
     Il merge è profondo: un update parziale del DM (es. solo i danni su
-    hp.current) NON azzera gli altri campi della scheda né hp.max."""
+    hp.current) NON azzera gli altri campi della scheda né hp.max.
+
+    Dopo il merge ricalcola i valori derivati (mod caratteristiche, CD/bonus
+    incantesimi) tramite `dnd.character.recompute_derived` così la scheda
+    visualizzata resta sempre consistente quando il DM modifica score, level
+    o slot."""
+    # Import lazy per evitare ciclo (dnd.character usa solo state via
+    # game_state — il parser è agnostico al dominio).
+    from dnd.character import (apply_level_progression, recompute_derived,
+                               sync_bases_from_update)
+
     for char in updates:
         if not isinstance(char, dict):
             continue
         name = (char.get("name") or "").strip()
         if not name:
             continue
+
+        # Filtra l'HP in arrivo prima del merge: blocca i reset a HP pieni
+        # che il DM tende a inviare a ogni messaggio. Solo damage/heal
+        # espliciti o un current STRETTAMENTE in calo modificano hp.current.
+        player = next(
+            (p for p in state.get("players", [])
+             if (p.get("name") or "").lower() == name.lower()),
+            None,
+        )
+        existing_hp = (player.get("sheet", {}).get("hp")
+                       if isinstance(player, dict) else None)
+        if isinstance(char.get("hp"), dict):
+            char["hp"] = _filter_hp_update(existing_hp or {}, char["hp"],
+                                           message_id)
+            if not char["hp"]:
+                # se il filtro ha svuotato l'update HP, rimuovi la chiave
+                # così _deep_merge non sovrascrive con un dict vuoto.
+                char.pop("hp", None)
+
         hp = char.get("hp", {})
         if isinstance(hp, dict):
             cur = hp.get("current")
@@ -475,17 +969,43 @@ def apply_char_updates(state: dict, updates: list[dict],
                 char["status"] = "down" if not char.get("death_saves", {}).get("dead") else "dead"
             elif cur is not None and cur > 0:
                 char.setdefault("status", "alive")
-
-        player = next(
-            (p for p in state.get("players", [])
-             if (p.get("name") or "").lower() == name.lower()),
-            None,
-        )
         if player is None:
-            player = {"name": name, "type": "human", "sheet": {}}
+            # Nome non presente nel party. Lo aggiungiamo alla lista PG SOLO
+            # se il DM lo marca ESPLICITAMENTE come personaggio giocante
+            # (player_type "human"/"ai"): es. PNG promosso a PG o PG mancante
+            # nel roster iniziale. I nemici/mostri NON vanno nella lista
+            # personaggi: vivono solo nella sequenza dei turni
+            # (initiative_order, via STATE_UPDATE). Un CHAR_UPDATE su un nome
+            # sconosciuto senza player_type esplicito viene quindi ignorato.
+            ptype = (char.get("player_type") or "").strip().lower()
+            if ptype not in ("human", "ai"):
+                continue
+            player = {"name": name, "type": ptype, "sheet": {}}
             state.setdefault("players", []).append(player)
+        else:
+            # Allinea `type` del wrapper se il DM ha esplicitamente cambiato
+            # `player_type` (es. da AI a umano o viceversa).
+            new_ptype = (char.get("player_type") or "").strip().lower()
+            if new_ptype in ("human", "ai"):
+                player["type"] = new_ptype
         sheet = player.setdefault("sheet", {})
         _deep_merge(sheet, char)
+        # Pipeline post-merge:
+        #  1) sync_bases_from_update: se il DM ha scritto direttamente i
+        #     valori finali (ac, hp.max, stats.X.score, ...), riallinea i
+        #     *_base così apply_item_modifiers non li sovrascrive col vecchio
+        #     calcolo ignorando il valore voluto.
+        #  2) apply_level_progression: se gli XP superano la soglia, alza
+        #     livello, HP max base, PB e rigenera gli slot dell'incantatore
+        #     (preservando lo `used`).
+        #  3) recompute_derived: ricalcola mod caratteristiche, CD/bonus
+        #     incantesimi e applica i bonus degli oggetti sintonizzati.
+        try:
+            sync_bases_from_update(sheet, char)
+            apply_level_progression(sheet)
+            recompute_derived(sheet)
+        except Exception as e:
+            print(f"[parser] recompute_derived fallito per {name}: {e}", flush=True)
 
         if callable(on_persist):
             try:
@@ -495,16 +1015,197 @@ def apply_char_updates(state: dict, updates: list[dict],
                 print(f"[parser] persist fallita per {name}: {e}", flush=True)
 
 
+def apply_spell_casts(state: dict, casts: list[dict]) -> list[dict]:
+    """Consuma uno slot incantesimo per ogni <SPELL_CAST> di livello ≥ 1.
+
+    I trucchetti (livello 0) sono a volontà: NON consumano slot.
+    Restituisce un report con un dict per ogni lancio:
+      {by, spell, level, ok, detail}
+    `ok=False` se il PG non esiste, non è incantatore, non ha uno slot di
+    quel livello, oppure ha già esaurito gli slot di quel livello — in tal
+    caso lo slot NON viene scalato e il DM va avvisato (l'incantesimo non
+    può essere lanciato)."""
+    results: list[dict] = []
+    if not casts:
+        return results
+    for c in casts:
+        if not isinstance(c, dict):
+            continue
+        by = (c.get("by") or c.get("name") or c.get("character") or "").strip()
+        spell = (c.get("spell") or c.get("name") or "").strip()
+        try:
+            level = int(c.get("level", 0) or 0)
+        except (TypeError, ValueError):
+            level = 0
+        rec = {"by": by, "spell": spell, "level": level, "ok": True, "detail": ""}
+        if level <= 0:
+            rec["detail"] = "trucchetto — a volontà, nessuno slot consumato"
+            results.append(rec)
+            continue
+        player = next(
+            (p for p in state.get("players", [])
+             if (p.get("name") or "").lower() == by.lower()),
+            None,
+        )
+        if player is None:
+            rec["ok"] = False
+            rec["detail"] = "personaggio non trovato"
+            results.append(rec)
+            continue
+        sheet = player.setdefault("sheet", {})
+        spells = sheet.get("spells")
+        slots = spells.get("slots") if isinstance(spells, dict) else None
+        if not isinstance(slots, dict) or not slots:
+            rec["ok"] = False
+            rec["detail"] = "il personaggio non è un incantatore"
+            results.append(rec)
+            continue
+        sl = slots.get(str(level))
+        if not isinstance(sl, dict):
+            rec["ok"] = False
+            rec["detail"] = f"nessuno slot di livello {level}"
+            results.append(rec)
+            continue
+        mx = max(0, int(sl.get("max", 0) or 0))
+        used = max(0, int(sl.get("used", 0) or 0))
+        if used >= mx:
+            rec["ok"] = False
+            rec["detail"] = f"slot di livello {level} esauriti ({used}/{mx})"
+            results.append(rec)
+            continue
+        sl["used"] = used + 1
+        rec["detail"] = f"slot L{level} consumato — restano {mx - sl['used']}/{mx}"
+        results.append(rec)
+    return results
+
+
+def apply_long_rest(state: dict, on_persist=None) -> list[str]:
+    """Riposo lungo (o fine sessione): per ogni PG ripristina HP al massimo,
+    azzera HP temporanei, resetta i death-saves e azzera tutti gli slot
+    incantesimo usati.
+
+    Esclude i PG marcati morti permanenti (death_saves.dead). Cancella anche
+    il book-keeping anti-drift dell'HP (vedi `_filter_hp_update`) così il
+    primo CHAR_UPDATE post-riposo riparte da una scheda pulita.
+
+    `on_persist(sheet)` viene chiamato per ogni scheda aggiornata (utile per
+    salvare la scheda su personaggi.json / runtime/personaggi/).
+
+    Restituisce la lista dei nomi PG su cui il riposo è stato applicato.
+    """
+    refreshed: list[str] = []
+    for p in state.get("players", []):
+        if not isinstance(p, dict):
+            continue
+        sheet = p.get("sheet")
+        if not isinstance(sheet, dict):
+            continue
+        ds = sheet.get("death_saves") if isinstance(sheet.get("death_saves"), dict) else None
+        if ds and ds.get("dead"):
+            continue
+        name = (sheet.get("name") or p.get("name") or "").strip()
+
+        # HP → pieni
+        hp = sheet.setdefault("hp", {})
+        if isinstance(hp, dict):
+            mx = hp.get("max")
+            try:
+                mx_int = int(mx)
+            except (TypeError, ValueError):
+                mx_int = None
+            if mx_int is not None and mx_int > 0:
+                hp["current"] = mx_int
+            hp["temp"] = 0
+            for k in ("_last_msg_id", "_last_damage", "_last_heal", "_last_after"):
+                hp.pop(k, None)
+
+        sheet["status"] = "alive"
+
+        # Death saves → azzerati (solo i contatori, non il flag "dead"
+        # che già escluderebbe il PG sopra).
+        if isinstance(ds, dict):
+            ds["successes"] = 0
+            ds["failures"] = 0
+
+        # Slot incantesimo → tutti gli used a 0.
+        spells = sheet.get("spells")
+        if isinstance(spells, dict):
+            slots = spells.get("slots")
+            if isinstance(slots, dict):
+                for sl in slots.values():
+                    if isinstance(sl, dict):
+                        sl["used"] = 0
+
+        refreshed.append(name)
+        if callable(on_persist):
+            try:
+                on_persist(dict(sheet))
+            except Exception as e:
+                print(f"[parser] persist long_rest fallita per {name}: {e}",
+                      flush=True)
+    return refreshed
+
+
 # Mood validi per il motore musicale (slot rimpiazzabili dal DM).
-_MUSIC_MOODS = {"menu", "generation", "explore", "social", "combat"}
-_MUSIC_FIELDS = ("bpm", "wave", "cutoff", "gain", "pad", "bass", "lead", "drum")
+_MUSIC_MOODS = {"menu", "generation", "explore", "social", "combat", "boss"}
+# 5 canali melodici (pad/bass/lead/arp/pluck) + 5 ritmici
+# (kick/snare/hats/clap/tom) = 10 canali. `drum` resta accettato come forma
+# legacy (batteria su un canale solo).
+_MUSIC_MELODIC = ("pad", "bass", "lead", "arp", "pluck")
+_MUSIC_RHYTHM  = ("kick", "snare", "hats", "clap", "tom", "drum")
+_MUSIC_FIELDS = ("bpm", "wave", "cutoff", "gain") + _MUSIC_MELODIC + _MUSIC_RHYTHM
+_MUSIC_WAVES = ("sine", "triangle", "sawtooth", "square")
+# Range tollerati dal motore audio. Valori fuori vengono clampati così il
+# modello non può rompere la sintesi mandando numeri estremi.
+_MUSIC_RANGES = {
+    "bpm":    (40, 160),
+    "cutoff": (300, 2000),
+    "gain":   (0.3, 0.9),
+}
+
+
+def _clamp_num(val, lo, hi, default):
+    """Restituisce val clampato in [lo, hi]; default se non numerico."""
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, n))
+
+
+def _sanitize_tune(u: dict) -> dict:
+    """Pulisce una tune dal DM: clampa bpm/cutoff/gain, valida wave,
+    stringifica pad/bass/lead/drum. Campi mancanti restano fuori dal
+    dict così il frontend eredita dal mood base."""
+    tune: dict = {}
+    if "bpm" in u:
+        tune["bpm"] = int(_clamp_num(u["bpm"], *_MUSIC_RANGES["bpm"], default=60))
+    if "cutoff" in u:
+        tune["cutoff"] = int(_clamp_num(u["cutoff"], *_MUSIC_RANGES["cutoff"], default=820))
+    if "gain" in u:
+        tune["gain"] = round(_clamp_num(u["gain"], *_MUSIC_RANGES["gain"], default=0.6), 2)
+    if "wave" in u:
+        w = str(u["wave"] or "").strip().lower()
+        if w in _MUSIC_WAVES:
+            tune["wave"] = w
+    for field in _MUSIC_MELODIC + _MUSIC_RHYTHM:
+        if field in u and u[field] is not None:
+            v = str(u[field]).strip()
+            # Strip wrapper <…> erroneo sui canali ritmici (sono UNA battuta).
+            if field in _MUSIC_RHYTHM and v.startswith("<") and v.endswith(">"):
+                v = v[1:-1].strip()
+            tune[field] = v
+    return tune
 
 
 def apply_music_update(state: dict, updates: list[dict]) -> None:
     """Registra le colonne sonore generate dal DM in `state['music']`,
     indicizzate per mood. Il frontend le passa al motore audio generativo.
 
-    Ogni <MUSIC> rimpiazza lo slot del mood indicato (default: 'explore')."""
+    Ogni <MUSIC> rimpiazza lo slot del mood indicato (default: 'explore').
+    I parametri numerici (bpm/cutoff/gain) sono clampati ai range
+    accettati dal sintetizzatore così il DM non può rompere l'audio
+    mandando numeri estremi."""
     if not updates:
         return
     music = state.setdefault("music", {})
@@ -514,7 +1215,7 @@ def apply_music_update(state: dict, updates: list[dict]) -> None:
         mood = (u.get("mood") or "explore").strip().lower()
         if mood not in _MUSIC_MOODS:
             mood = "explore"
-        tune = {k: u[k] for k in _MUSIC_FIELDS if k in u}
+        tune = _sanitize_tune(u)
         if tune:
             music[mood] = tune
 
@@ -542,6 +1243,8 @@ __all__ = [
     "clean_text", "strip_tags", "strip_narrative",
     "extract_state", "extract_chars", "extract_map", "extract_music",
     "extract_sprites", "extract_scene", "extract_roll_requests",
-    "resolve_roll_requests", "apply_state_update", "apply_char_updates",
+    "extract_spell_casts", "resolve_roll_requests",
+    "apply_state_update", "apply_char_updates", "apply_spell_casts",
+    "apply_long_rest",
     "apply_music_update", "apply_sprites", "apply_scene", "_deep_merge",
 ]

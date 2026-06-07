@@ -1,5 +1,5 @@
 """
-Motore regole D&D 5.5e — dadi, modificatori, CA, iniziativa, XP, morte.
+Motore regole — dadi, modificatori, CA, iniziativa, XP, morte.
 
 Il DM (IA) narra l'azione e richiede tiri via tag <ROLL_REQ>. Il codice
 esegue i tiri in modo deterministico e iniettabile.
@@ -32,6 +32,8 @@ class RollResult:
     reason: str = ""
     is_crit: bool = False     # True se naturale 20 su un d20
     is_fumble: bool = False   # True se naturale 1 su un d20
+    adv_rolls: Optional[List[int]] = None  # [tenuto, scartato] dei due d20
+                                           # tirati con vantaggio/svantaggio
 
     def to_dict(self) -> dict:
         return {
@@ -44,6 +46,7 @@ class RollResult:
             "reason":       self.reason,
             "is_crit":      self.is_crit,
             "is_fumble":    self.is_fumble,
+            "adv_rolls":    self.adv_rolls,
         }
 
     def pretty(self) -> str:
@@ -51,8 +54,9 @@ class RollResult:
         crit = " ✦CRIT" if self.is_crit else (" ✗FUMBLE" if self.is_fumble else "")
         mod_s = f"{self.modifier:+d}" if self.modifier else ""
         rolls_s = "+".join(str(r) for r in self.rolls)
+        drop = f" (scartato {self.adv_rolls[1]})" if self.adv_rolls else ""
         reason = f" ({self.reason})" if self.reason else ""
-        return f"🎲 {self.expr}{tag} → [{rolls_s}]{mod_s} = {self.total}{crit}{reason}"
+        return f"🎲 {self.expr}{tag} → [{rolls_s}]{mod_s} = {self.total}{crit}{drop}{reason}"
 
 
 def roll(expr: str, *, advantage: bool = False, disadvantage: bool = False,
@@ -102,13 +106,20 @@ def roll(expr: str, *, advantage: bool = False, disadvantage: bool = False,
     all_rolls: list[int] = []
     total = flat
     primary_d20: Optional[int] = None     # indice del d20 principale in all_rolls
+    adv_rolls: Optional[list[int]] = None # i due d20 [tenuto, scartato] con vant/svant
     for sign, n, faces in dice_terms:
         group = [rng.randint(1, faces) for _ in range(n)]
         # Vantaggio/svantaggio: solo sul PRIMO d20 singolo positivo (5.5e)
         if faces == 20 and n == 1 and sign > 0 and primary_d20 is None:
             if advantage or disadvantage:
                 second = rng.randint(1, faces)
-                group = [max(group[0], second)] if advantage else [min(group[0], second)]
+                first = group[0]
+                kept = max(first, second) if advantage else min(first, second)
+                # Tieni traccia di ENTRAMBI i d20: il totale usa solo il dado
+                # tenuto, ma il dado scartato resta visibile (adv_rolls) per
+                # trasparenza in UI/log.
+                adv_rolls = [kept, second if kept == first else first]
+                group = [kept]
             primary_d20 = len(all_rolls)
         all_rolls.extend(group)
         total += sign * sum(group)
@@ -121,7 +132,7 @@ def roll(expr: str, *, advantage: bool = False, disadvantage: bool = False,
     return RollResult(
         expr=expr_s, rolls=all_rolls, modifier=flat, total=total,
         advantage=advantage, disadvantage=disadvantage, reason=reason,
-        is_crit=is_crit, is_fumble=is_fumble,
+        is_crit=is_crit, is_fumble=is_fumble, adv_rolls=adv_rolls,
     )
 
 
@@ -130,7 +141,7 @@ def roll(expr: str, *, advantage: bool = False, disadvantage: bool = False,
 # ────────────────────────────────────────────────────────────────────────
 
 def ability_mod(score: int) -> int:
-    """Modificatore standard D&D 5.5e: (score - 10) // 2."""
+    """Modificatore standard: (score - 10) // 2."""
     return (score - 10) // 2
 
 

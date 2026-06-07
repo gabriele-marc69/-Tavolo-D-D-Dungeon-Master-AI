@@ -3,19 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>⚔ Tavolo D&D 5.5e</title>
+<title>⚔ Tavolo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=EB+Garamond:ital@0;1&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=Cinzel+Decorative:wght@700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Uncial+Antiqua&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
 
 <header class="topbar">
-  <div class="brand">⚔ <span>Tavolo D&D 5.5e</span></div>
+  <div class="brand">⚔ <span>Tavolo</span></div>
   <div class="status">
     <span class="badge" id="dm-status">DM: <strong id="dm-name">—</strong> <span id="dm-dot" class="dot off"></span></span>
     <span class="badge">Fase: <strong id="phase-name">setup</strong></span>
+    <span class="badge">Round: <strong id="round-num">0</strong></span>
     <span class="badge">Turno: <strong id="turn-num">0</strong></span>
   </div>
   <div class="actions">
@@ -32,6 +33,9 @@
     <button id="btn-chars">👤 Personaggi</button>
     <button id="btn-bestiary">🐉 Bestiario</button>
     <button id="btn-debug" title="Comunicazione app ⇄ frontend">🐞 Debug</button>
+    <button id="btn-adventure" title="Carica un'avventura TXT e giocala passo passo">📜 Avventura TXT</button>
+    <input id="adventure-file" type="file" accept=".txt,text/plain" style="display:none">
+    <span id="adventure-badge" class="badge" style="display:none">📜 <strong id="adv-name">—</strong> <span id="adv-progress">0/0</span> <button id="adv-clear" title="Togli l'avventura precaricata" style="background:none;border:none;color:inherit;cursor:pointer;padding:0 4px">✕</button></span>
     <button id="btn-save">💾 Salva</button>
     <button id="btn-load">📂 Carica</button>
     <button id="btn-new" class="danger">🔄 Nuova</button>
@@ -42,6 +46,10 @@
   <!-- COLONNA SINISTRA: GIOCATORI -->
   <aside class="col col-players">
     <h2>Giocatori</h2>
+    <div id="initiative-panel" class="initiative-panel" hidden>
+      <div class="ini-head">⚔ Ordine iniziativa <span id="ini-round" class="ini-round">Round 0</span></div>
+      <ol id="ini-list" class="ini-list"></ol>
+    </div>
     <div id="players-list" class="players-list">
       <p class="empty">Nessun giocatore. Apri <button class="link" onclick="openModal('chars')">Personaggi</button> per crearne.</p>
     </div>
@@ -50,9 +58,12 @@
   <!-- COLONNA CENTRALE: CHAT DM -->
   <section class="col col-chat">
     <div id="chat-log" class="chat-log">
-      <div class="msg msg-system">Benvenuto al Tavolo D&D 5.5e. Apri <button class="link" onclick="openModal('setup')">Setup</button> per collegarti a DeepSeek e iniziare.</div>
+      <div class="msg msg-system">Benvenuto al Tavolo Apri <button class="link" onclick="openModal('setup')">Setup</button> per collegarti a DeepSeek e iniziare.</div>
     </div>
     <div id="typing" class="typing">⏳ Il DM sta pensando...</div>
+    <div id="next-action-bar" class="next-action-bar hidden">
+      <button id="next-action" class="next-action-btn" title="Mostra l'azione successiva">▶ Prossima azione</button>
+    </div>
     <form id="chat-form" class="chat-form" autocomplete="off">
       <input id="chat-input" type="text" placeholder="Scrivi un'azione, una risposta o un comando..." disabled>
       <button id="chat-send" disabled>▶</button>
@@ -61,7 +72,7 @@
 
   <!-- COLONNA DESTRA: MAPPA + INFO -->
   <aside class="col col-map">
-    <h2>Mappa</h2>
+    <h2>Mappa <button id="btn-map-redraw" class="btn-map-redraw" title="Chiedi al DM di ridisegnare la mappa completa">🔄 Ridisegna</button></h2>
     <div id="map-render" class="map map-empty" title="Clicca per ingrandire la mappa">— nessuna mappa —</div>
     <div class="zone-info">
       <div><strong>Zona:</strong> <span id="zone-name">—</span></div>
@@ -69,37 +80,15 @@
     </div>
     <details class="map-legend">
       <summary>Legenda mappa</summary>
-      <div class="legend-grid">
-        <span><i class="lg lg-party">☻</i> Party</span>
-        <span><i class="lg lg-start">✦</i> Partenza</span>
-        <span><i class="lg lg-exit">★</i> Obiettivo</span>
-        <span><i class="lg lg-combat">⚔</i> Combattimento</span>
-        <span><i class="lg lg-explore">❖</i> Esplora</span>
-        <span><i class="lg lg-social">☺</i> Incontro</span>
-        <span><i class="lg lg-door">▣</i> Porta</span>
-        <span><i class="lg lg-trap">✸</i> Trappola</span>
-        <span><i class="lg lg-water">≈</i> Acqua</span>
-        <span><i class="lg lg-stair">⇕</i> Scale</span>
-        <span><i class="lg lg-tree">♣</i> Albero</span>
-        <span><i class="lg lg-grass">„</i> Sterpaglia</span>
-        <span><i class="lg lg-rock">●</i> Masso</span>
-        <span><i class="lg lg-fire">♨</i> Falò</span>
-        <span><i class="lg lg-bridge">≡</i> Ponte</span>
-        <span><i class="lg lg-chest">⊡</i> Forziere</span>
-        <span><i class="lg lg-wall"></i> Muro</span>
-        <span><i class="lg lg-fog"></i> Inesplorato</span>
-      </div>
+      <!-- popolata dinamicamente da renderLegend(): solo i simboli
+           effettivamente presenti nella mappa corrente -->
+      <div id="legend-grid" class="legend-grid"></div>
     </details>
-
-    <div id="scene-panel" class="scene-panel hidden">
-      <h3>🖼 Scena <span class="scene-tag">illustrazione</span></h3>
-      <div id="scene-render" class="scene-frame">— nessun disegno —</div>
-      <figcaption id="scene-caption" class="scene-caption">—</figcaption>
-    </div>
 
     <h3>🎲 Dadi</h3>
     <div id="dice-box" class="dice-box">
       <div id="dice-turn" class="dice-turn">Tiri liberi</div>
+      <div id="dice-pending-list" class="dice-pending-list"></div>
       <div class="dice-grid">
         <button class="die" data-sides="4">d4</button>
         <button class="die" data-sides="6">d6</button>
@@ -169,6 +158,18 @@
     <button class="modal-close" onclick="closeModal('chars')">✕</button>
     <h2>👤 Personaggi (max 5)</h2>
     <p>Almeno 1 giocatore umano. Le schede 5.5e vengono generate automaticamente.</p>
+
+    <details class="party-pick" open>
+      <summary><strong>🎒 Carica party da schede salvate</strong> <span id="party-count" class="muted"></span></summary>
+      <p class="note">Seleziona da 1 a 5 schede salvate (file <code>runtime/personaggi/nome.json</code>) e caricale come party.</p>
+      <div id="party-pick-list" class="party-pick-list">— nessuna scheda salvata —</div>
+      <div class="modal-actions">
+        <button id="party-reload">↻ Aggiorna lista</button>
+        <button id="party-load" class="primary">🎒 Carica come party</button>
+      </div>
+    </details>
+
+    <h3 style="margin-top:14px">✏ Crea / modifica</h3>
     <div id="chars-form" class="chars-form"></div>
     <div class="modal-actions">
       <button onclick="addCharRow()">+ Aggiungi PG</button>
@@ -232,26 +233,9 @@
           <div><strong>Posizione:</strong> <span id="map-big-pos">—</span></div>
         </div>
         <h3>Legenda</h3>
-        <div class="legend-grid legend-grid-big">
-          <span><i class="lg lg-party">☻</i> Party</span>
-          <span><i class="lg lg-start">✦</i> Partenza</span>
-          <span><i class="lg lg-exit">★</i> Obiettivo</span>
-          <span><i class="lg lg-combat">⚔</i> Combattimento</span>
-          <span><i class="lg lg-explore">❖</i> Esplora</span>
-          <span><i class="lg lg-social">☺</i> Incontro</span>
-          <span><i class="lg lg-door">▣</i> Porta</span>
-          <span><i class="lg lg-trap">✸</i> Trappola</span>
-          <span><i class="lg lg-water">≈</i> Acqua</span>
-          <span><i class="lg lg-stair">⇕</i> Scale</span>
-          <span><i class="lg lg-tree">♣</i> Albero</span>
-          <span><i class="lg lg-grass">„</i> Sterpaglia</span>
-          <span><i class="lg lg-rock">●</i> Masso</span>
-          <span><i class="lg lg-fire">♨</i> Falò</span>
-          <span><i class="lg lg-bridge">≡</i> Ponte</span>
-          <span><i class="lg lg-chest">⊡</i> Forziere</span>
-          <span><i class="lg lg-wall"></i> Muro</span>
-          <span><i class="lg lg-fog"></i> Inesplorato</span>
-        </div>
+        <!-- popolata dinamicamente da renderLegend() coi soli simboli
+             presenti nella mappa corrente -->
+        <div id="legend-grid-big" class="legend-grid legend-grid-big"></div>
       </div>
     </div>
   </div>

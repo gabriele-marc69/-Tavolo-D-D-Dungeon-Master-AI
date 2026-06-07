@@ -1,6 +1,8 @@
 # CLAUDE.md — Tavolo D&D: Dungeon Master AI
 
-Applicazione web Flask che simula un Dungeon Master per D&D 5e usando modelli LLM locali o API remote.
+Applicazione web Flask che simula un Dungeon Master per D&D 5e. Il DM è un
+modello remoto (DeepSeek) pilotato via **browser automation** (Playwright +
+Chromium), non un'API a chiavi né un modello locale.
 
 ---
 
@@ -8,64 +10,69 @@ Applicazione web Flask che simula un Dungeon Master per D&D 5e usando modelli LL
 
 ```bash
 pip install -r requirements.txt
-python app.py        # apre http://localhost:5000 automaticamente
+playwright install chromium      # una tantum: scarica il browser
+python app.py                    # apre http://localhost:5000 + Chromium
 ```
 
-Dipendenze: `flask>=3.0`, `requests>=2.31`.
-Per modelli locali servono anche `torch`, `transformers`.
+Dipendenze (`requirements.txt`): `flask>=3.0`, `requests>=2.31`,
+`playwright>=1.45`, `edge-tts>=7.0` (voce, opzionale).
+
+Variabili d'ambiente:
+- `PORT` — porta del server (default `5000`).
+- `TAVOLO_NO_AUTOSTART=1` — NON aprire Chromium all'avvio (lo si apre poi col
+  pulsante Setup, o via `POST /api/webchat/open`). Utile per test/headless.
 
 ---
 
 ## Architettura
 
 ```
-app.py              # server Flask, logica di gioco, routing API
-dnd_data.py         # generatore schede D&D (generate_sheet, RACES, CLASSES, BACKGROUNDS, xp_for_level)
-bestiary.json       # bestiario mostri
-bestiary_add.py     # script CLI per aggiungere mostri al bestiario
-templates/
-  index.html        # UI principale (chat + mappa)
-  narrate.html      # pagina narrativa
-  bestiary.html     # visualizzatore bestiario
-static/             # asset statici
+app.py                # routing Flask + collante (nessuna logica di dominio)
+dnd/                  # MOTORE di gioco
+  character.py        # generate_sheet, upgrade_sheet, recompute_derived,
+                      #   apply_level_progression, liste SRD (specie/classi/…)
+  rules.py            # roll()/RollResult, modificatori, CA, TS morte, XP/livelli
+  spells.py           # SPELLS, CLASS_SPELL_LIST, CLASS_CANTRIPS, CASTER_KIND,
+                      #   class_spells(), caster_kind()
+  state.py            # modello game_state, persistenza, fog-of-war, fasi
+  bestiary.py         # carica bestiary.json: meta(), filter_by_cr()
+dm/                   # interfaccia col Dungeon Master
+  prompt.py           # system prompt, briefing, reminder, richieste avventura/mappa
+  webchat.py          # Webchat + WebchatConfig — Playwright/Chromium → DeepSeek
+  parser.py           # estrazione/applicazione dei tag nelle risposte del DM
+templates/index.html  # UI unica (chat + mappa + schede)
+static/               # app.css, app.js, music.js
+bestiary.json         # bestiario mostri (SRD 5.1)
+bestiary_add.py       # script CLI per aggiungere mostri al bestiario
 ```
 
-File di stato generati a runtime:
-- `game_state.json`    — stato partita (fase, giocatori, mappa, HP)
-- `conversation.json`  — storico messaggi
-- `personaggi.json`    — schede personaggio persistenti
-- `avventura.txt`      — avventura pre-scritta opzionale
-- `.env`               — chiavi API (auto-creato da `/api/hf_login` o `/api/use_preset`)
+File di stato generati a runtime (cartella `runtime/`):
+- `runtime/game_state.json`        — stato partita (vedi sotto)
+- `runtime/conversation.json`      — storico messaggi (ultimi 40)
+- `runtime/personaggi.json`        — schede PG consolidate del party corrente
+- `runtime/personaggi/<nome>.json` — una scheda per file, per comporre il party
+- `avventura.txt` (radice repo)    — avventura pre-scritta opzionale
+
+> All'avvio `app._normalize_existing_sheets()` normalizza le schede in
+> `game_state` + `personaggi.json` (migrazione bonus oggetti → valori di
+> gioco). La scrittura su disco avviene **solo se qualcosa è cambiato**.
 
 ---
 
-## Backend LLM
+## Backend LLM — DeepSeek via Playwright
 
-`BACKEND` è una variabile globale: `"local"` o `"api"`.
+Non ci sono chiavi API né modelli locali. `dm/webchat.py` apre Chromium su
+`https://chat.deepseek.com/` (`WebchatConfig`: `url`, `name="DeepSeek Chat"`,
+`timeout=180`s) e invia/raccoglie i messaggi pilotando la pagina. Il login è
+manuale dell'utente nella finestra del browser.
 
-### Locale (HuggingFace Transformers)
-Carica automaticamente il primo modello disponibile in `~/.cache/huggingface/hub` tra:
-1. `Jackrong/Qwen3.5-4B-Claude-4.6-Opus-Reasoning-Distilled-v2`
-2. `Qwen/Qwen3.5-4B`
-3. `Qwen/Qwen3.5-2B`
-4. `LiquidAI/LFM2.5-1.2B-Instruct`
-5. `Qwen/Qwen3.5-0.8B`
+Flusso briefing iniziale: l'auto-start apre la chat ma **non** invia nulla
+finché il frontend non rileva il "LED verde" (chat pronta) e chiama
+`POST /api/webchat/sync`. Un gate di login (`webchat.login_ready()`) impedisce
+invii prima del login. Prompt lunghi vengono spezzati in chunk.
 
-Device auto-rilevato: Intel Arc XPU → CUDA → CPU.
-
-### API remote (compatibile OpenAI Chat Completions)
-Preset configurati in `API_PRESETS` (app.py:38–111):
-- **DeepSeek** (`DEEPSEEK_API_KEY`): `deepseek-chat`, `deepseek-reasoner`
-- **Together AI** (`TOGETHER_API_KEY`): `together-deepseek-v3`
-- **OpenRouter** (`OPENROUTER_API_KEY`): `openrouter-deepseek`, `openrouter-deepseek-r1`, `openrouter-qwen-plus`, `openrouter-qwen-72b`
-- **DashScope/Qwen** (`DASHSCOPE_API_KEY`): `qwen-plus`, `qwen-turbo`, `qwen-max`, `qwen2.5-72b`
-
-### HuggingFace Inference Router
-Preset HF (`HF_PRESETS`):
-- `glm-5.1` → Together AI (`zai-org/GLM-5.1`)
-- `deepseek-v4-pro` → Novita (`deepseek/deepseek-v4-pro`)
-
-Chiavi lette da variabili d'ambiente o file `.env` locale.
+Voce: `edge-tts` (Microsoft Edge TTS) sintetizza l'audio del DM se installato.
+Musica e sprite pixel-art sono generati dal DM stesso tramite tag (vedi sotto).
 
 ---
 
@@ -74,96 +81,112 @@ Chiavi lette da variabili d'ambiente o file `.env` locale.
 | Metodo | Endpoint | Descrizione |
 |--------|----------|-------------|
 | GET | `/` | UI principale |
-| GET | `/narrate` | Pagina narrativa |
-| GET | `/bestiary` | Bestiario |
-| GET | `/api/model_status` | Stato caricamento modello |
-| POST | `/api/load_model` | Carica modello (local/api/preset/hf) |
-| GET | `/api/candidates` | Lista modelli locali in cache |
-| GET | `/api/presets` | Lista preset API con stato chiave |
-| POST | `/api/use_preset` | Attiva preset API esterno |
-| GET | `/api/hf_status` | Stato token HuggingFace |
-| POST | `/api/hf_login` | Imposta token HF + configura backend |
-| GET | `/api/backend` | Configurazione backend corrente |
-| POST | `/api/set_backend` | Cambia backend (local/api) |
-| POST | `/api/chat` | **Invio messaggio → SSE streaming** |
 | GET | `/api/state` | Stato partita corrente |
-| POST | `/api/new_game` | Reset partita |
-| POST | `/api/save` | Salva stato + conversazione |
-| POST | `/api/load` | Carica stato + conversazione |
-| POST | `/api/load_adventure` | Carica `avventura.txt` |
-| GET | `/api/characters` | Leggi personaggi salvati |
-| POST | `/api/characters` | Salva personaggi (genera schede complete) |
-| DELETE | `/api/characters` | Elimina `personaggi.json` |
+| GET | `/api/dnd_data` | Liste SRD (specie, classi, background, allineamenti, generi) |
+| GET | `/api/bestiary` | Bestiario (filtri `cr_min`/`cr_max`) |
+| GET | `/api/characters` | Schede del party corrente |
+| POST | `/api/characters` | Genera + salva schede (max 5) |
+| DELETE | `/api/characters` | Elimina party + schede per-file |
+| GET | `/api/characters/available` | Elenco schede salvate (`runtime/personaggi/`) |
+| GET | `/api/characters/<name>` | Singola scheda salvata |
+| DELETE | `/api/characters/<name>` | Elimina singola scheda |
+| POST | `/api/party/load` | Compone il party da schede salvate |
 | POST | `/api/generate_sheet` | Anteprima scheda senza salvare |
-| GET | `/api/dnd_data` | Liste SRD (razze, classi, background) |
-| POST | `/api/roll` | Tiro dadi (es: `"dice": "2d6+3"`) |
-| GET | `/api/debug` | Ultimi 20 scambi con il modello |
+| POST | `/api/character_update` | Modifica manuale scheda (merge profondo) |
+| GET | `/api/spells_catalog` | Catalogo incantesimi (filtro `class=`) |
+| POST | `/api/prepare_spell` | Prepara/dimentica incantesimo |
+| POST | `/api/cast_spell` | Lancia incantesimo (consuma slot) |
+| POST | `/api/roll` | Tiro dadi (es: `"dice":"2d6+3"`, `advantage`) |
+| POST | `/api/new_game` | Nuova partita (mantiene i PG per default) |
+| POST | `/api/generate_adventure` | Chiede al DM di generare l'avventura |
+| POST | `/api/load_adventure` | Carica `avventura.txt` |
+| GET / DELETE | `/api/adventure` | Legge / elimina l'avventura caricata |
+| POST | `/api/save` / `/api/load` | Salva / carica stato + conversazione |
+| GET | `/api/webchat/status` | Stato webchat (aperta, briefed, in_flight…) |
+| POST | `/api/webchat/sync` | Allinea il DM allo stato (briefing) |
+| POST | `/api/webchat/open` | Apre/riapre Chromium sul DM |
+| POST | `/api/map/redraw` | Chiede al DM di ridisegnare la mappa |
+| POST | `/api/music/generate` | Chiede al DM una nuova colonna sonora |
+| POST | `/api/chat` | **Invio messaggio → SSE streaming** |
+| GET | `/api/tts/voices` | Voci edge-tts disponibili |
+| POST | `/api/tts` | Sintetizza audio (edge-tts) |
+| GET | `/api/debug` | Ultimi 20 scambi col DM |
 | GET | `/api/conversation` | Storico conversazione |
-| GET | `/api/bestiary` | Dati bestiario JSON |
 
 ### `/api/chat` — Formato SSE
-Il client riceve Server-Sent Events:
-- `": keepalive"` — heartbeat ogni 3s mentre il modello genera
-- `data: {"token": "..."}` — token di testo
-- `data: {"done": true, "state": {...}}` — fine risposta + stato aggiornato
-- `data: {"error": "..."}` — errore
+- `": keepalive"` — heartbeat mentre il DM genera
+- `data: {"token":"..."}` — token di testo
+- `data: {"done":true, "state":{...}}` — fine risposta + stato aggiornato
+- `data: {"error":"..."}` — errore
 
 ---
 
 ## Stato di gioco (`game_state`)
 
-Campi principali in `game_state.json`:
+Definito da `state.empty_state()`. Campi principali:
 
 ```json
 {
-  "phase": "setup|registration|character_creation|adventure_generation|adventure|combat",
-  "players": [
-    {
-      "name": "NomeGiocatore",
-      "type": "human|ai",
-      "sheet": { /* scheda completa D&D */ }
-    }
-  ],
-  "seed": "YYYYMMDD-HHMMSS-RAND4",
-  "map_ascii": "##########\n#*...@...#\n...",
-  "current_position": [x, y],
-  "combat_active": false,
-  "turn": 0,
-  "adventure_loaded": false,
-  "characters_loaded": false,
-  "session_start": "ISO8601"
+  "phase": "setup|registration|character_creation|adventure_generation|adventure|combat|ended",
+  "players": [{ "name": "...", "type": "human|ai", "sheet": { /* scheda D&D */ } }],
+  "active_player": null,
+  "turn": 0, "round": 0,
+  "initiative_order": [{ "name": "...", "init": 0 }],
+  "map_base": null, "map_full": null, "map_ascii": null,
+  "map_width": 0, "map_height": 0, "revealed_tiles": [],
+  "current_position": [x, y], "current_zone": null, "current_scene": null,
+  "zones": [], "combat_active": false, "encounter": null,
+  "adventure_loaded": false, "adventure_title": null,
+  "adventure_beats": [], "adventure_index": 0,
+  "characters_loaded": false, "session_start": "ISO8601",
+  "rolls_log": [], "pending_rolls": [], "pending_roll_feedback": [],
+  "pending_dm_notes": [], "music": {}, "sprites": {}
 }
 ```
 
----
-
-## Parsing risposte LLM
-
-`_clean_response()` (app.py:996) rimuove:
-- Blocchi `<think>…</think>` (DeepSeek-R1, Qwen3)
-- Paragrafi di calcolo interni `*(…)*`
-- Righe debug come `*Formula Base:…*`
-
-Il sistema estrae automaticamente dalla risposta del DM:
-- **`MAP_START…MAP_END`** → `game_state["map_ascii"]`
-- **`<STATE_UPDATE>{…}</STATE_UPDATE>`** → aggiorna fase, posizione, HP
-- **`<CHAR_UPDATE>{…}</CHAR_UPDATE>`** → aggiorna scheda personaggio + persiste su `personaggi.json`
+`map_full` = mappa completa nota al DM; `map_ascii` = vista col fog-of-war
+applicato (`revealed_tiles`). Un cambio di `current_scene` forza il ridisegno
+della mappa.
 
 ---
 
-## Schede Personaggio (`dnd_data.py`)
+## Parsing risposte del DM (`dm/parser.py`)
 
-`generate_sheet(name, race, cls, level, background, alignment, ...)` genera scheda completa D&D 5e con:
-- Array standard `[15,14,13,12,10,8]` assegnato ottimalmente per classe + bonus razza
+`clean_text()` deduplica testo ripetuto e ripulisce; `strip_narrative()` toglie
+i tag/blocchi strutturati lasciando solo la narrazione mostrata in chat.
+
+Tag estratti e applicati al `game_state`:
+- **`MAP_START … MAP_END`** → mappa ASCII (`extract_map` → `map_base/full/ascii`)
+- **`<STATE_UPDATE>{…}</STATE_UPDATE>`** → fase, posizione, scena, combat…
+- **`<CHAR_UPDATE>{…}</CHAR_UPDATE>`** → scheda PG (persiste su `personaggi.json`)
+- **`<MUSIC>{…}</MUSIC>`** → colonna sonora per mood
+- **`<SPRITE>{…}</SPRITE>`** → sprite pixel-art (griglia)
+- **`<SPELL_CAST>{…}</SPELL_CAST>`** → incantesimi lanciati (consumo slot)
+- **`ROLL_REQ`** → richieste di tiro (`resolve_roll_requests`): i tiri umani
+  vanno al riquadro dadi, quelli IA li risolve il sistema.
+
+---
+
+## Schede Personaggio (`dnd/character.py`)
+
+`generate_sheet(name, species, cls, level, background, alignment, player_type,
+gender)` genera una scheda D&D 5e completa:
+- Array standard `[15,14,13,12,10,8]` assegnato ottimalmente per classe + bonus specie
 - HP = dado classe + mod COS
 - CA, Iniziativa, Velocità, TS, Competenze, Linguaggi, Equipaggiamento, Tratti, Capacità, Incantesimi
+
+`upgrade_sheet` / `recompute_derived` ricalcolano i derivati (mod, CD, bonus da
+oggetti magici parsati dal linguaggio naturale); `apply_level_progression`
+gestisce il level-up da XP.
 
 ---
 
 ## Convenzioni
 
-- Tutto il codice e i commenti sono in italiano (nomi variabili in inglese)
-- Il modello locale gira in thread separato con coda `queue.Queue` per non bloccare Flask
-- `conversation_history` mantiene gli ultimi 20 messaggi nel contesto
-- Le chiavi API vengono lette da env vars → file `.env` → body richiesta (ordine di priorità)
-- `_save_key_to_env()` aggiorna il `.env` senza sovrascrivere le altre chiavi
+- Codice e commenti in italiano (nomi variabili in inglese).
+- `webchat` (Playwright) gira in thread separati: l'invio del briefing e dei
+  messaggi al DM non blocca Flask.
+- `conversation_history` mantiene gli ultimi 40 messaggi.
+- Persistenza idempotente: `sync_characters_from_players` scrive solo a
+  contenuto cambiato (importare i moduli non tocca il disco se nulla cambia).
+- Nessuna chiave API per l'LLM: l'autenticazione al DM è la sessione browser.

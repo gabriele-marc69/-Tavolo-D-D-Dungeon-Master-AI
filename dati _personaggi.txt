@@ -1,0 +1,85 @@
+FINE DELL'AVVENTURA
+
+XP DELLA SEZIONE FINALE:
+- Sezione 3 (Selvio + 2 zombie): 650 XP
+- Bonus Lacrima recuperata: 300 XP
+- Bonus Nina riportata in vita: 200 XP
+- Totale sezione 3: 1.150 XP
+
+XP CUMULATIVE FINALI:
+- Gabr: 2.796 XP (Livello 4)
+- Pip: 2.796 XP (Livello 4)
+- Efi: 2.796 XP (Livello 4)
+- Nina: 2.393 XP (Livello 3, mancano 307 XP al 4)
+- Mira: 898 XP (Livello 2, mancano 2 XP al 3)
+
+SOGLIA LIVELLO 4 = 2.700 XP → Gabr, Pip ed Efi salgono di livello.
+
+TESORI E OGGETTI FINALI:
+- Rosario d'argento (30 mo)
+- Anello di ottone (100 mo da Kaelen — già pagati)
+- Medaglione "T.K." (100 mo da Kaelen — già pagati)
+- 50 mo + 1 ametista (50 mo) da Selvio
+- Corona di rame sbalzato (75 mo)
+- Mantella ricamata d'oro (30 mo in filo dorato)
+- Pergamena di Bless
+- Pergamena di Speak with Dead
+- Pozione di volare
+
+(Pozione di guarigione 2d4+2 già consumata da Gabr)
+
+Totale liquidabile: ~385 mo + gemme.
+Giocatore: Aggiorna i dati delle schede dei personaggi, i livelli e le monete d'oro.
+DM: Fai tu le opzioni migliori per la classe e aggiorna le schede.
+Giocatore: Fai tu le opzioni migliori per la classe e aggiorna le schede con XP, livelli, ecc.
+DM: AGGIORNAMENTO SCHEDE — LIVELLO 4
+
+GABR — Warlock Aasimar Lv.4
+- HP: 19 → 26 (+7)
+- Caratteristiche: CAR 17 → 19 (mod +4)
+- Invocazioni Eldritch (2):
+  · Agonizing Blast — aggiungi CAR ai danni di Eldritch Blast
+  · Devil's Sight — vedi normalmente nel buio magico fino a 36 m
+- Nuovo trucchetto: Minor Illusion
+- Nuovo incantesimo (2° livello): Misty Step (bonus action, teletrasporto 9 m)
+- Slot incantesimi: 1 slot di 2° livello
+
+PIP — Guerriero Nano Lv.4
+- HP: 24 → 32 (+8)
+- Caratteristiche: FOR 15 → 17 (mod +3)
+- Talento: Great Weapon Master
+  · Prima di attaccare con arma pesante: -5 al tiro per colpire per +10 ai danni
+  · Se riduci un nemico a 0 PF o fai un critico: attacco extra come bonus action
+- Maestria d'armi Bordoluce (spada lunga): Push (spingi il bersaglio di 3 m) + Graze (se manchi, fai danni pari al mod FOR)
+
+EFI — Maga Elfa Lv.4
+- HP: 16 → 21 (+5)
+- Caratteristiche: INT 16 → 18 (mod +4)
+- Nuovo trucchetto: Ray of Frost
+- Nuovi incantesimi nel libro (2° livello):
+  · Scorching Ray — tre raggi di fuoco, 2d6 ciascuno
+  · Web — area di ragnatele, terreno difficile, TS DES o immobilizzato
+- Slot incantesimi: L1: 4 slot | L2: 3 slot
+
+NINA — Chierica Umana Lv.3 (verso 4)
+- HP: 24 | XP: 2.393
+- Dopo riposo lungo: HP pieni, veleno scomparso
+
+MIRA — Ladra Umana Lv.2 (verso 3)
+- HP: 20 | XP: 898
+- Mancano 2 XP per il Lv.3
+
+TESORO DISTRIBUITO
+- Totale liquidabile: 385 mo
+- Distribuzione (5 PG): 77 mo a testa
+
+INVENTARIO COMUNE
+Oggetti magici:
+- Pergamena di Bless
+- Pergamena di Speak with Dead
+- Pozione di volare
+
+Gemme e tesori:
+- 1 ametista (50 mo)
+- Corona di rame (75 mo)
+- Mantella ricamata d'oro (30 mo in filo)

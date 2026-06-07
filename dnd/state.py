@@ -13,11 +13,17 @@ from typing import Any
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 RUNTIME_DIR = os.path.join(BASE_DIR, "runtime")
+# Directory dedicata alle schede personaggio: un file "nome.json" per ogni
+# PG creato, così è possibile selezionarli singolarmente per comporre il party.
+CHARACTERS_DIR = os.path.join(RUNTIME_DIR, "personaggi")
 
 GAME_STATE_FILE   = os.path.join(RUNTIME_DIR, "game_state.json")
 CONVERSATION_FILE = os.path.join(RUNTIME_DIR, "conversation.json")
 CHARACTERS_FILE   = os.path.join(RUNTIME_DIR, "personaggi.json")
 ADVENTURE_FILE    = os.path.join(BASE_DIR, "avventura.txt")
+# Ultimo modello DM scelto in Setup (url/name/timeout): persiste tra i
+# riavvii così l'app riapre l'ultimo modello configurato invece del default.
+WEBCHAT_CONFIG_FILE = os.path.join(RUNTIME_DIR, "webchat_config.json")
 
 
 PHASES = (
@@ -33,6 +39,27 @@ PHASES = (
 
 def _ensure_runtime() -> None:
     os.makedirs(RUNTIME_DIR, exist_ok=True)
+    os.makedirs(CHARACTERS_DIR, exist_ok=True)
+
+
+# Sanitizza il nome PG per generarne un filename sicuro:
+# rimuove caratteri non alfanumerici, collassa spazi/trattini, taglia a 64 char.
+_SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9_\-]+")
+
+
+def safe_char_filename(name: str) -> str:
+    """Converte il nome PG in un nome file sicuro (senza estensione).
+    Esempi: 'Thorìn Scudodiquercia' → 'Thorin_Scudodiquercia'."""
+    import unicodedata
+    n = unicodedata.normalize("NFKD", (name or "").strip())
+    n = "".join(c for c in n if not unicodedata.combining(c))
+    n = _SAFE_NAME_RE.sub("_", n).strip("_")
+    return (n or "senza_nome")[:64]
+
+
+def character_file_path(name: str) -> str:
+    """Percorso assoluto del file per-personaggio 'nome.json'."""
+    return os.path.join(CHARACTERS_DIR, safe_char_filename(name) + ".json")
 
 
 def empty_state() -> dict:
@@ -43,23 +70,33 @@ def empty_state() -> dict:
         "turn":              0,
         "round":             0,
         "initiative_order":  [],     # [{name, init}] in combat
+        "map_base":           None,  # skeleton immutabile (muri) — fissato una volta
         "map_full":           None,  # mappa completa nota al DM (NON inviata all'utente)
         "map_ascii":          None,  # mappa visibile dall'utente (fog-of-war applicata)
+        "map_width":          0,     # larghezza effettiva della mappa corrente
+        "map_height":         0,     # altezza effettiva della mappa corrente
         "revealed_tiles":    [],     # lista di [x,y] tile rivelate dall'esplorazione
         "current_position":  [0, 0],
         "current_zone":      None,
+        "current_scene":     None,   # etichetta scena corrente: ogni nuovo valore =
+                                     # ambientazione diversa → mappa va ridisegnata da zero
         "zones":             [],     # [{pos:[x,y], type, name, desc}]
         "combat_active":     False,
         "encounter":         None,   # {monsters:[...], remaining_hp:{...}}
         "adventure_loaded":  False,
         "adventure_title":   None,
+        "adventure_beats":   [],     # avventura TXT precaricata, spezzata in scene
+        "adventure_index":   0,      # prossimo beat da consegnare al DM
         "characters_loaded": False,
         "session_start":     datetime.now().isoformat(),
         "rolls_log":         [],     # ultimi 30 tiri per UI
         "pending_rolls":     [],     # ROLL_REQ in attesa: li tira il giocatore umano
         "pending_roll_feedback": [], # tiri IA risolti, non ancora narrati dal DM
+        "pending_dm_notes":  [],     # note di sistema da consegnare al DM (es. slot esauriti)
         "music":             {},     # colonne sonore generate dal DM, per mood
-        "sprites":           {},     # sprite pixel-art 10×10 generate dal DM
+        "sprites":           {},     # sprite pixel-art 16×16 generate dal DM
+                                    # (vecchie 10×10 ancora accettate: scaling
+                                    # nearest-neighbor in fase di render)
     }
 
 
@@ -98,6 +135,22 @@ def save_state(state: dict) -> None:
     _write_json(GAME_STATE_FILE, state)
 
 
+# ──────────────── config webchat (ultimo modello DM) ─────────────────
+
+def load_webchat_config() -> dict | None:
+    """Ultimo modello DM salvato (url/name/timeout), o None se mai scelto."""
+    cfg = _read_json(WEBCHAT_CONFIG_FILE, None)
+    return cfg if isinstance(cfg, dict) else None
+
+
+def save_webchat_config(cfg: dict) -> None:
+    """Salva il modello DM corrente per riproporlo al prossimo avvio."""
+    if not isinstance(cfg, dict):
+        return
+    keep = {k: cfg[k] for k in ("url", "name", "timeout") if k in cfg}
+    _write_json(WEBCHAT_CONFIG_FILE, keep)
+
+
 # ──────────────── conversation history ───────────────────────────────
 
 def load_conversation() -> list[dict]:
@@ -115,14 +168,110 @@ def load_characters() -> dict | None:
 
 
 def save_characters(data: dict) -> None:
+    """Salva personaggi.json E scrive un file 'nome.json' per ogni PG nella
+    cartella runtime/personaggi/: così le schede sono selezionabili
+    singolarmente per comporre il party."""
     data["last_updated"] = datetime.now().isoformat()
     _write_json(CHARACTERS_FILE, data)
+    for sheet in (data.get("characters") or []):
+        if isinstance(sheet, dict):
+            save_character_file(sheet)
 
 
 def delete_characters() -> bool:
+    """Cancella personaggi.json E tutte le schede 'nome.json' in
+    runtime/personaggi/. Restituisce True se almeno un file è stato rimosso."""
+    removed = False
     if os.path.exists(CHARACTERS_FILE):
         os.remove(CHARACTERS_FILE)
-        return True
+        removed = True
+    if os.path.isdir(CHARACTERS_DIR):
+        for fn in os.listdir(CHARACTERS_DIR):
+            if fn.lower().endswith(".json"):
+                try:
+                    os.remove(os.path.join(CHARACTERS_DIR, fn))
+                    removed = True
+                except OSError:
+                    pass
+    return removed
+
+
+# ──────────────── schede PG per-file (nome.json) ─────────────────────
+
+def save_character_file(sheet: dict) -> str | None:
+    """Salva la scheda PG su runtime/personaggi/<nome>.json.
+    Restituisce il path scritto, oppure None se la scheda non ha nome."""
+    name = (sheet.get("name") or "").strip()
+    if not name:
+        return None
+    _ensure_runtime()
+    path = character_file_path(name)
+    payload = {
+        "version": 1,
+        "saved":   datetime.now().isoformat(),
+        "name":    name,
+        "sheet":   sheet,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def load_character_file(name: str) -> dict | None:
+    """Legge la scheda PG da runtime/personaggi/<nome>.json. Compatibile sia
+    col formato wrapper {sheet:{...}} sia con un dict-scheda nudo."""
+    path = character_file_path(name)
+    raw = _read_json(path, None)
+    if not isinstance(raw, dict):
+        return None
+    if isinstance(raw.get("sheet"), dict):
+        return raw["sheet"]
+    # formato legacy: il file è già la scheda
+    return raw
+
+
+def list_character_files() -> list[dict]:
+    """Elenco delle schede salvate in runtime/personaggi/: per ognuna
+    restituisce un riassunto (name, species, class, level, background,
+    alignment, player_type, file, gender)."""
+    _ensure_runtime()
+    out: list[dict] = []
+    if not os.path.isdir(CHARACTERS_DIR):
+        return out
+    for fn in sorted(os.listdir(CHARACTERS_DIR)):
+        if not fn.lower().endswith(".json"):
+            continue
+        path = os.path.join(CHARACTERS_DIR, fn)
+        raw = _read_json(path, None)
+        if not isinstance(raw, dict):
+            continue
+        sheet = raw.get("sheet") if isinstance(raw.get("sheet"), dict) else raw
+        if not isinstance(sheet, dict):
+            continue
+        out.append({
+            "file":        fn,
+            "name":        sheet.get("name") or os.path.splitext(fn)[0],
+            "species":     sheet.get("species") or sheet.get("race") or "",
+            "class":       sheet.get("class") or "",
+            "level":       sheet.get("level") or 1,
+            "background":  sheet.get("background") or "",
+            "alignment":   sheet.get("alignment") or "",
+            "player_type": sheet.get("player_type") or "human",
+            "gender":      sheet.get("gender") or "",
+            "saved":       raw.get("saved") if isinstance(raw.get("saved"), str) else None,
+        })
+    return out
+
+
+def delete_character_file(name: str) -> bool:
+    """Cancella la singola scheda 'nome.json' in runtime/personaggi/."""
+    path = character_file_path(name)
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+            return True
+        except OSError:
+            return False
     return False
 
 
@@ -152,9 +301,14 @@ def upsert_character(sheet: dict) -> None:
                 if (c.get("name") or "").lower() == name.lower()), None)
     if idx is not None:
         _deep_update(chars[idx], sheet)
+        merged = chars[idx]
     else:
         chars.append(sheet)
+        merged = sheet
     save_characters(data)
+    # ridondante con save_characters() ma esplicita l'intento:
+    # ogni upsert riflette SUBITO la scheda aggiornata nel file per-PG.
+    save_character_file(merged)
 
 
 def remove_character(name: str) -> bool:
@@ -168,6 +322,7 @@ def remove_character(name: str) -> bool:
         return False
     data["characters"] = new
     save_characters(data)
+    delete_character_file(name)
     return True
 
 
@@ -184,6 +339,12 @@ def sync_characters_from_players(players: list[dict]) -> None:
         "characters": [],
     }
     chars = data.setdefault("characters", [])
+    # La sync gira a OGNI avvio (vedi app._normalize_existing_sheets). Senza
+    # questo gate ogni import riscriverebbe personaggi.json E i file per-PG
+    # anche quando nulla è cambiato: importare il modulo avrebbe un effetto
+    # collaterale su disco. Confronto pre/post-merge → scrivi solo a
+    # contenuto effettivamente diverso.
+    before = json.dumps(chars, ensure_ascii=False, sort_keys=True)
     for p in players:
         sheet = p.get("sheet")
         if not isinstance(sheet, dict):
@@ -197,7 +358,8 @@ def sync_characters_from_players(players: list[dict]) -> None:
             _deep_update(chars[idx], sheet)
         else:
             chars.append(dict(sheet))
-    save_characters(data)
+    if json.dumps(chars, ensure_ascii=False, sort_keys=True) != before:
+        save_characters(data)
 
 
 # ──────────────── fasi ───────────────────────────────────────────────
@@ -263,6 +425,12 @@ MAP_TILE_GLYPHS = {
     "f": "♨",   # falò / fuoco
     "=": "≡",   # ponte
     "$": "⊡",   # forziere / tesoro
+    # ── mostri/nemici sulla mappa (icone RPG distinte da 'C' che è ZONA) ──
+    "M": "☠",   # mostro generico
+    "g": "ɢ",   # goblin / coboldo / piccolo nemico
+    "k": "☠",   # scheletro / non-morto
+    "D": "Ɖ",   # drago / grande creatura
+    "P": "✟",   # PG abbattuto / corpo
 }
 
 
@@ -293,8 +461,9 @@ def find_position(ascii_map: str, marker: str = "@") -> tuple[int, int] | None:
 
 
 def reveal_around(state: dict, x: int, y: int, radius: int = 1) -> None:
-    """Rivela tutte le tile attorno a (x,y) nel raggio dato. Aggiorna
-    state['revealed_tiles'] in-place (deduplica)."""
+    """Rivela tutte le tile attorno a (x,y) nel raggio dato (quadrato). Aggiorna
+    state['revealed_tiles'] in-place (deduplica). Versione legacy senza
+    line-of-sight: usata come fallback quando map_full non è disponibile."""
     revealed = state.setdefault("revealed_tiles", [])
     seen = {tuple(t) for t in revealed}
     for dx in range(-radius, radius + 1):
@@ -303,6 +472,80 @@ def reveal_around(state: dict, x: int, y: int, radius: int = 1) -> None:
             if tile not in seen:
                 seen.add(tile)
                 revealed.append([tile[0], tile[1]])
+
+
+def _los_clear(grid: list[str], x0: int, y0: int, x1: int, y1: int) -> bool:
+    """True se nessun muro '#' interseca la linea dritta da (x0,y0) a
+    (x1,y1) (esclusi gli estremi). Algoritmo di Bresenham.
+
+    L'estremo (x1,y1) — se è esso stesso un muro — è considerato visibile
+    (vedi il bordo della stanza dall'interno): solo i muri INTERMEDI
+    occludono. Così una stanza chiusa illumina TUTTE le sue celle (incluso
+    il perimetro), mentre un corridoio rivela soltanto fin dove l'occhio
+    arriva prima di sbattere contro un muro.
+    """
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    err = dx - dy
+    x, y = x0, y0
+    h = len(grid)
+    while True:
+        if (x, y) == (x1, y1):
+            return True
+        e2 = 2 * err
+        if e2 > -dy:
+            err -= dy
+            x += sx
+        if e2 < dx:
+            err += dx
+            y += sy
+        if (x, y) == (x1, y1):
+            return True
+        if 0 <= y < h:
+            row = grid[y]
+            ch = row[x] if 0 <= x < len(row) else " "
+            if ch == "#":
+                return False
+
+
+def reveal_los(state: dict, map_full: str, x: int, y: int,
+               radius: int = 10) -> None:
+    """Rivela le tile visibili da (x,y) con LINE-OF-SIGHT entro `radius`.
+
+    Per ogni cella dentro un cerchio approssimato di raggio `radius`,
+    traccia una linea (Bresenham) dal party alla cella. Se nessun muro
+    interrompe la linea → cella rivelata. Conseguenze pratiche:
+      • Stanza chiusa illuminata: tutto l'interno (incluso il perimetro
+        di muri) viene rivelato in un solo turno, senza nebbia residua.
+      • Corridoio: si vede solo il tratto in linea visiva, gli angoli
+        restano nascosti finché non li si imbocca.
+      • Spazio aperto (foresta, valle): visibile fino al limite di raggio.
+    """
+    if not map_full:
+        return
+    grid = [line for line in map_full.splitlines() if line is not None]
+    if not grid:
+        return
+    revealed = state.setdefault("revealed_tiles", [])
+    seen = {tuple(t) for t in revealed}
+    h = len(grid)
+    r2 = radius * radius
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            if dx * dx + dy * dy > r2:
+                continue  # cerchio, non quadrato — torcia rotonda
+            tx, ty = x + dx, y + dy
+            if tx < 0 or ty < 0 or ty >= h:
+                continue
+            if tx >= len(grid[ty]):
+                continue
+            if (tx, ty) in seen:
+                continue
+            if _los_clear(grid, x, y, tx, ty):
+                seen.add((tx, ty))
+                revealed.append([tx, ty])
 
 
 def apply_fog(map_full: str, revealed_tiles: list, party_pos: tuple | list = None) -> str:
@@ -433,6 +676,26 @@ def check_map_coherence(ascii_map: str,
             report["party"] = [x, y]
         else:
             report["issues"].append(f"Posizione {cur} fuori mappa o sopra un muro.")
+            # snap automatico: cerca la cella non-muro più vicina (BFS).
+            # Serve quando map_full ha già il @ rimosso (caso normale in
+            # app.py): in assenza di party sulla mappa il check non avrebbe
+            # un fallback e il marker resterebbe sopra un muro.
+            from collections import deque
+            q: deque = deque([(x, y, 0)])
+            seen = {(x, y)}
+            while q:
+                cx, cy, d = q.popleft()
+                if (0 <= cy < h and 0 <= cx < len(grid[cy])
+                        and grid[cy][cx] != "#"):
+                    report["suggested_position"] = [cx, cy]
+                    break
+                if d > 20:
+                    continue
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx, ny = cx + dx, cy + dy
+                    if (nx, ny) not in seen:
+                        seen.add((nx, ny))
+                        q.append((nx, ny, d + 1))
 
     report["ok"] = not report["issues"]
     return report
@@ -456,16 +719,166 @@ def move_party(ascii_map: str, new_x: int, new_y: int) -> str:
     return "\n".join("".join(row) for row in grid)
 
 
-def normalize_map(ascii_map: str, size: int = 10) -> str:
-    """Forza la mappa a `size`×`size`. Righe e colonne mancanti riempite
-    con muri '#', quelle in eccesso tagliate: la griglia resta SEMPRE
-    regolare e quadrata (default 10×10)."""
+# ──────────────── avventura precaricata ──────────────────────────────
+
+_BEAT_SEP_RE = re.compile(r"^[-=*#_]{3,}\s*$")
+_BEAT_HEADING_RE = re.compile(
+    r"^\s*(?:#{1,4}\s+|\*{0,2})?"
+    r"(?:scena|capitolo|atto|parte|beat|incontro|prologo|epilogo)\b",
+    re.IGNORECASE,
+)
+
+
+def split_into_beats(text: str, target_chars: int = 600) -> list[str]:
+    """Spezza una avventura TXT in "beat" (scene) da giocare uno alla volta.
+
+    Confini di beat ESPLICITI (forzano sempre un nuovo beat):
+      - Righe di separazione: '---', '===', '***', '###', '___' (≥3 char).
+      - Intestazioni di scena: una riga che inizia con
+        Scena/Capitolo/Atto/Parte/Beat/Incontro/Prologo/Epilogo
+        (con o senza heading markdown '#').
+    Confini DEBOLI: una riga vuota chiude il paragrafo ma NON chiude il
+    beat — i paragrafi corti vengono uniti fino a ~`target_chars`. Beat
+    lunghi NON vengono spezzati: il DM regge."""
+    if not text or not text.strip():
+        return []
+    raw = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Fase 1: raccolta "sezioni" tra confini espliciti.
+    sections: list[list[str]] = []
+    cur: list[str] = []
+    cur_para: list[str] = []
+
+    def flush_para():
+        if cur_para:
+            cur.append("\n".join(cur_para).strip())
+            cur_para.clear()
+
+    def flush_section(start_with: str | None = None):
+        flush_para()
+        if cur:
+            sections.append(cur.copy())
+            cur.clear()
+        if start_with:
+            cur.append(start_with)
+
+    for line in raw.split("\n"):
+        s = line.strip()
+        if not s:
+            flush_para()
+            continue
+        if _BEAT_SEP_RE.match(s):
+            flush_section()
+            continue
+        if _BEAT_HEADING_RE.match(s) and len(s) < 120:
+            # intestazione: chiude il beat precedente, apre uno nuovo
+            # con l'intestazione come prima riga
+            flush_section(start_with=s)
+            continue
+        cur_para.append(line)
+    flush_section()
+
+    # Fase 2: dentro ogni sezione, raggruppa paragrafi fino a target_chars
+    # in beat distinti (per testi con sezioni MOLTO lunghe).
+    beats: list[str] = []
+    for sec in sections:
+        if not sec:
+            continue
+        buf = ""
+        for p in sec:
+            if not buf:
+                buf = p
+            elif len(buf) + len(p) + 2 <= target_chars:
+                buf = buf + "\n\n" + p
+            else:
+                beats.append(buf)
+                buf = p
+        if buf:
+            beats.append(buf)
+    return beats
+
+
+IMMUTABLE_TILES = set("#")
+"""Caratteri di mappa che NON cambiano mai una volta fissato il dungeon.
+Solo i muri sono davvero immutabili: il DM aggiorna i mostri, i tesori
+(saccheggiati), le trappole (scattate), il party e i PG abbattuti."""
+
+
+def compose_map(base: str, new_map: str) -> str:
+    """Compone la nuova mappa del DM sopra quella base (la skeleton
+    immutabile del dungeon).
+
+    - Le celle muro (#) della base restano SEMPRE muro: protegge la
+      coerenza del dungeon se il DM "buca" un muro per sbaglio.
+    - Tutte le altre celle (pavimento, decorazioni, mostri, tesori, PG
+      abbattuti, party @) prendono il valore da `new_map`: così mostri,
+      cadaveri, forzieri vuoti e cambi d'ambiente si aggiornano.
+    Entrambe le mappe sono normalizzate 20×20."""
+    if not base:
+        return new_map
+    if not new_map:
+        return base
+    b = base.splitlines()
+    n = new_map.splitlines()
+    h = max(len(b), len(n))
+    out = []
+    for y in range(h):
+        br = b[y] if y < len(b) else ""
+        nr = n[y] if y < len(n) else ""
+        w = max(len(br), len(nr))
+        row = []
+        for x in range(w):
+            bc = br[x] if x < len(br) else "#"
+            nc = nr[x] if x < len(nr) else bc
+            if bc in IMMUTABLE_TILES:
+                row.append(bc)
+            else:
+                row.append(nc if nc and nc != " " else bc)
+        out.append("".join(row))
+    return "\n".join(out)
+
+
+MAP_MIN_SIDE = 6
+MAP_MAX_SIDE = 40
+
+
+def measure_map(ascii_map: str) -> tuple[int, int]:
+    """Restituisce (larghezza, altezza) effettive della mappa ASCII —
+    larghezza = riga più lunga, altezza = numero di righe non vuote.
+    Clamp ai limiti consentiti."""
+    rows = [line for line in (ascii_map or "").splitlines() if line.strip()]
+    if not rows:
+        return (0, 0)
+    h = min(MAP_MAX_SIDE, max(MAP_MIN_SIDE, len(rows)))
+    w = min(MAP_MAX_SIDE, max(MAP_MIN_SIDE,
+                              max(len(r.rstrip()) for r in rows)))
+    return (w, h)
+
+
+def normalize_map(ascii_map: str,
+                  width: int | None = None,
+                  height: int | None = None) -> str:
+    """Normalizza la mappa a `width`×`height` (rettangolare). Se `width`
+    o `height` non sono passati li ricava dalla mappa stessa (larghezza =
+    riga più lunga, altezza = numero righe), con clamp [MAP_MIN_SIDE,
+    MAP_MAX_SIDE]. Righe/colonne mancanti riempite con muri '#',
+    eccedenze tagliate: la griglia resta SEMPRE regolare."""
+    # retro-compatibilità: vecchia firma `normalize_map(map, 20)` con
+    # `width` passato come int → significa quadrata di lato `width`.
+    if width is not None and height is None:
+        height = width
+    if width is None or height is None:
+        mw, mh = measure_map(ascii_map)
+        width  = width  if width  is not None else (mw or MAP_MIN_SIDE)
+        height = height if height is not None else (mh or MAP_MIN_SIDE)
+    width  = max(MAP_MIN_SIDE, min(MAP_MAX_SIDE, int(width)))
+    height = max(MAP_MIN_SIDE, min(MAP_MAX_SIDE, int(height)))
     src = [line for line in (ascii_map or "").splitlines() if line.strip()]
     out = []
-    for y in range(size):
+    for y in range(height):
         row = list(src[y]) if y < len(src) else []
-        row = row[:size]
-        while len(row) < size:
+        row = row[:width]
+        while len(row) < width:
             row.append("#")
         out.append("".join(row))
     return "\n".join(out)
@@ -473,13 +886,18 @@ def normalize_map(ascii_map: str, size: int = 10) -> str:
 
 __all__ = [
     "PHASES", "GAME_STATE_FILE", "CONVERSATION_FILE",
-    "CHARACTERS_FILE", "ADVENTURE_FILE", "RUNTIME_DIR",
+    "CHARACTERS_FILE", "CHARACTERS_DIR", "ADVENTURE_FILE", "RUNTIME_DIR",
+    "WEBCHAT_CONFIG_FILE", "load_webchat_config", "save_webchat_config",
     "empty_state", "load_state", "save_state",
     "load_conversation", "save_conversation",
     "load_characters", "save_characters", "delete_characters",
     "upsert_character", "remove_character", "sync_characters_from_players",
+    "save_character_file", "load_character_file",
+    "list_character_files", "delete_character_file",
+    "safe_char_filename", "character_file_path",
     "set_phase", "add_roll", "add_player", "find_player", "has_human",
-    "MAP_TILE_GLYPHS", "render_map", "map_to_grid", "find_position",
-    "move_party", "normalize_map", "reveal_around", "apply_fog",
-    "check_map_coherence",
+    "MAP_TILE_GLYPHS", "IMMUTABLE_TILES", "render_map", "map_to_grid",
+    "find_position", "move_party", "normalize_map", "measure_map",
+    "MAP_MIN_SIDE", "MAP_MAX_SIDE", "compose_map", "reveal_around",
+    "reveal_los", "apply_fog", "check_map_coherence", "split_into_beats",
 ]

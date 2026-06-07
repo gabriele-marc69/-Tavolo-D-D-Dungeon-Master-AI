@@ -1,0 +1,376 @@
+================================================================
+   IL SILENZIO DI PIETRAVALLE
+   Avventura D&D 5.5 (One-Shot) per 4 personaggi di 2° livello
+   Durata stimata: ~2 ore
+================================================================
+
+----------------------------------------------------------------
+PREMESSA PER IL DUNGEON MASTER
+----------------------------------------------------------------
+Pietravalle è un villaggio minerario ai piedi dei Monti Grigi.
+Negli ultimi giorni, dalla vecchia miniera abbandonata sono
+ricominciati a sentirsi rumori, e tre minatori che si erano
+avventurati a controllare non hanno fatto ritorno. L'anziano
+sindaco Aldovino offre 150 mo al gruppo che riporterà i
+dispersi (vivi o morti) e scoprirà cosa si annida nelle gallerie.
+
+In verità, un piccolo gruppo di goblin guidato da un hobgoblin
+disertore ha occupato la miniera, ma nelle gallerie più profonde
+si è risvegliato qualcosa di ben più antico: una sacca di
+melma e i resti animati di un vecchio prospettore.
+
+Struttura dell'avventura:
+  - Sezione 1: La Bocca della Miniera   (~30 minuti)
+  - Sezione 2: Le Gallerie dei Goblin    (~45 minuti)
+  - Sezione 3: La Camera del Filone Nero (~45 minuti)
+
+Soglie di XP per livello 2 (party da 4 PG):
+  Facile 200 | Medio 400 | Difficile 600 | Mortale 800
+  XP totali distribuite nell'avventura: circa 1.700 XP
+  (sufficienti a portare il party a inizio livello 3)
+
+
+================================================================
+SEZIONE 1 — LA BOCCA DELLA MINIERA
+================================================================
+
+SCENARIO
+--------
+I PG raggiungono l'ingresso della miniera dopo una camminata
+di un'ora dal villaggio. L'imboccatura è scavata nel fianco
+della montagna: una grande arcata di pietra rinforzata con
+travi di legno marcio. Un carro rovesciato giace a venti
+metri dall'ingresso, con casse spaccate e tracce di sangue
+secco. Sentinelle goblin si nascondono fra le rocce.
+
+Atmosfera: silenzio innaturale. Nessun uccello canta.
+Una lanterna spenta dondola appesa a una trave.
+
+PROVE DI ABILITÀ SUGGERITE
+--------------------------
+- Saggezza (Percezione) CD 13: notare le due sentinelle
+  goblin nascoste dietro le rocce sopra l'ingresso.
+- Intelligenza (Indagare) CD 12: dal carro, capire che è
+  stato saccheggiato di recente (resti di pane fresco).
+- Saggezza (Sopravvivenza) CD 11: tracce di piedi piccoli
+  che entrano nella miniera trascinando qualcosa di pesante.
+
+INCONTRO: AGGUATO ALL'INGRESSO
+------------------------------
+Mostri:
+  - 2x Goblin                        (50 XP cad. = 100 XP)
+  - 1x Goblin Boss (sergente)        (200 XP)
+Totale: 300 XP — difficoltà MEDIA
+
+Tattica: i due goblin tirano con archi corti dall'alto
+(copertura mezza, +2 CA). Il Goblin Boss attacca corpo a
+corpo solo se i PG salgono o lo costringono.
+Se due goblin su tre vengono abbattuti, l'ultimo tenta la
+fuga verso l'interno gridando "Intrusi! Intrusi!" — questo
+potrebbe allertare la Sezione 2.
+
+TESORO
+------
+- Borsa del Goblin Boss: 15 mo, 22 ma, una gemma di
+  quarzo affumicato (valore 25 mo).
+- Sul carro saccheggiato, sotto una cassa: 1 pozione di
+  guarigione (2d4+2 PF).
+- Mappa rudimentale incisa su un pezzo di corteccia
+  (mostra il primo livello della miniera — dare al party
+  la Mappa A).
+
+MAPPA A — BOCCA DELLA MINIERA
+-----------------------------
+
+                  ╱╲   ╱╲   ╱╲
+                 ╱  ╲ ╱  ╲ ╱  ╲       (cresta rocciosa,
+                ╱ S1 ▼    ▼S2 ╲        S1/S2 = sentinelle)
+        ════════════════════════════
+        ║                          ║
+        ║     [ARCATA INGRESSO]    ║
+        ║   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓    ║
+        ║   ▓                  ▓   ║
+        ║   ▓   verso Sez. 2 → ▓   ║
+        ║   ▓                  ▓   ║
+        ║   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓    ║
+        ║                          ║
+        ║   [CARRO]   ▓            ║
+        ║    ░░░     ░░░           ║
+        ║  (BOSS qui se non         ║
+        ║   sopra la cresta)       ║
+        ════════════════════════════
+        Sentiero ↓ verso il villaggio
+
+
+================================================================
+SEZIONE 2 — LE GALLERIE DEI GOBLIN
+================================================================
+
+SCENARIO
+--------
+Il primo livello della miniera è un dedalo di gallerie
+puntellate. L'aria è umida e sa di fumo. Il pavimento è
+percorso da binari arrugginiti su cui un tempo correvano
+i carrelli. I goblin hanno trasformato una sala di sosta
+in accampamento: focolari, brande di stracci, un palo a
+cui sono legati i due minatori superstiti.
+
+Locazioni principali:
+  A. Galleria d'accesso (con trappola)
+  B. Sala dei carrelli (incontro)
+  C. Accampamento goblin (incontro + ostaggi)
+  D. Scala a chiocciola verso il livello inferiore
+
+A — TRAPPOLA DELLA CORDA
+------------------------
+A metà della galleria d'accesso, una corda tesa attiva un
+secchio di sassi appeso a una trave.
+  - Saggezza (Percezione) CD 14 per individuarla.
+  - Destrezza (Acrobazia) CD 12 per superarla una volta vista.
+  - Se attivata: tiro salvezza Destrezza CD 12,
+    fallimento = 2d6 danni contundenti e svantaggio al primo
+    tiro nel round successivo (storditi dai sassi).
+
+B — SALA DEI CARRELLI
+---------------------
+Tre carrelli minerari sono parcheggiati su binari paralleli.
+Un goblin armato di balestra leggera è di guardia, accovacciato
+dietro un carrello (copertura tre quarti, +5 CA).
+
+Mostri:
+  - 1x Goblin (con balestra leggera)  (50 XP)
+  - 1x Mastino (cane da guardia)      (100 XP)
+Totale: 150 XP — difficoltà FACILE
+
+Tattica: il goblin urla appena vede i PG, attirando l'attenzione
+della Sezione C entro 2 round se non viene zittito in fretta.
+Il mastino carica il PG più vicino.
+
+Idea narrativa: un PG forte (Atletica CD 13) può sganciare
+un carrello e farlo rotolare verso un nemico per 2d6 danni.
+
+C — ACCAMPAMENTO GOBLIN
+-----------------------
+Una grande sala scavata, con quattro focolari accesi. Due
+minatori sono legati a un palo centrale, sporchi e contusi
+ma vivi (Brom e Tessa). Un piccolo altare improvvisato
+fatto di teschi animali domina un angolo.
+
+Mostri:
+  - 3x Goblin                         (50 XP cad. = 150 XP)
+  - 1x Hobgoblin (Skarn, il disertore) (100 XP)
+Totale: 250 XP — difficoltà MEDIA
+
+Tattica: Skarn impartisce ordini in goblin, dando bonus
+tattico ai suoi (un goblin per turno ottiene azione bonus
+"Disimpegno" gratuita finché Skarn è in piedi). Skarn cerca
+il duello col PG più corazzato. Se ridotto sotto metà dei
+PF, tenta di trattare: offre di rivelare "ciò che si muove
+nel basso" in cambio della vita. Il DM può scegliere se
+onorare la resa.
+
+OSTAGGI
+-------
+Brom e Tessa rivelano che un terzo minatore, il vecchio
+Corvin, era sceso al livello inferiore "per prendere la
+sua roba dal vecchio cantiere" — e non è mai risalito.
+Avvertono i PG: "Lì sotto si muove qualcosa di freddo".
+
+TESORO
+------
+- Forziere di Skarn (non chiuso a chiave):
+    35 mo, 60 ma, 8 mp
+    1 spada lunga +1 (con incisione nanica "Bordoluce")
+    1 pergamena di arma magica
+- Una collana di rame con pendente di ossidiana (15 mo)
+- Le chiavi della scala a chiocciola (D)
+
+MAPPA B — LIVELLO SUPERIORE (GALLERIE GOBLIN)
+---------------------------------------------
+
+      [da Sez. 1]
+            │
+            ▼
+       ╔════════╗
+       ║   A    ║   A = galleria con trappola corda
+       ║  ░░╪░░ ║       (╪ = corda tesa)
+       ║   ░░   ║
+       ╚══╤═════╝
+          │
+       ╔══╧═════════════╗
+       ║                ║
+       ║       B        ║   B = Sala dei Carrelli
+       ║   ▣═══▣═══▣    ║       (▣ = carrelli su binari)
+       ║         G   K  ║       G = goblin, K = mastino
+       ╚════╤═══════════╝
+            │
+       ╔════╧══════════════╗
+       ║                   ║
+       ║        C          ║   C = Accampamento Goblin
+       ║   ✦   ☠   ✦       ║       ✦ = focolari, ☠ = altare
+       ║       P           ║       P = palo ostaggi
+       ║   g   g   g       ║       g = goblin
+       ║         H         ║       H = Skarn (hobgoblin)
+       ║                   ║
+       ╚═══════╤═══════════╝
+               │
+              [D]              D = scala a chiocciola
+               ▼                   verso Sezione 3
+          [Sez. 3]
+
+
+================================================================
+SEZIONE 3 — LA CAMERA DEL FILONE NERO
+================================================================
+
+SCENARIO
+--------
+La scala a chiocciola scende per quaranta metri in una
+penombra umida. L'aria diventa fredda e densa. Il livello
+inferiore è una sola grande caverna naturale, ampliata
+dai minatori: pareti striate da un filone scuro che sembra
+assorbire la luce delle torce. Pozzanghere di acqua nera.
+Travi spezzate. Tre carrelli abbandonati. In fondo, una
+nicchia naturale brilla debolmente.
+
+Sul pavimento, sparsi: un piccone, un casco con la
+lampada spenta, una scarpa. E delle tracce vischiose.
+
+LUCE: la caverna è in penombra (oscurità leggera) anche
+con torce, a causa del filone nero che assorbe la luce.
+Tutti i tiri per colpire a vista hanno svantaggio se la
+fonte di luce è oltre 6 metri.
+
+PROVE DI ABILITÀ
+----------------
+- Intelligenza (Storia) CD 14: il filone nero è
+  "ossidiana del sottosuolo", legata a piani inferiori.
+- Saggezza (Percezione) CD 12: una delle pozzanghere
+  non riflette le torce — è una creatura.
+- Saggezza (Sopravvivenza) CD 13: alcune tracce vanno
+  verso la nicchia luminosa, altre tornano indietro
+  trascinando qualcosa di pesante.
+
+INCONTRO FINALE: IL RISVEGLIO DEL FILONE
+-----------------------------------------
+Mostri:
+  - 1x Cubo Gelatinoso ridotto*       (450 XP)
+  - 1x Zombie (Corvin, il prospettore) (50 XP)
+  - 2x Sciame di Ratti                 (50 XP cad. = 100 XP)
+Totale: 600 XP — difficoltà DIFFICILE
+
+* Cubo Gelatinoso ridotto: come da statistiche standard ma
+  con 39 PF (anziché 84) per adattarlo al 2° livello.
+  Mantiene tutte le altre caratteristiche, inclusa la
+  capacità di inghiottire. Se il DM teme il TPK, può
+  ridurre ulteriormente i PF a 30 e i danni acidi a 2d6.
+
+Dinamica dell'incontro:
+  Round 1: una "pozzanghera" davanti ai PG si rivela essere
+           il Cubo. Lo zombie di Corvin emerge da dietro un
+           carrello, ancora con il casco da minatore.
+  Round 2: dalle travi spezzate sciamano i ratti, attratti
+           dal rumore.
+  Round 3+: il Cubo cerca di inghiottire il PG più vicino;
+            Corvin attacca chi rimane separato.
+
+Tattica: lo spazio è ampio, i PG possono manovrare.
+Suggerire ai giocatori che il filone nero, se colpito con
+fuoco, vibra e disturba il Cubo (tiro salvezza Costituzione
+CD 12 o stordito 1 turno). Un PG inventivo merita questo bonus.
+
+TESORO
+------
+Nella nicchia luminosa, in un vecchio zaino di cuoio (di
+Corvin):
+  - 80 mo, 40 me (monete d'elettro, valore raro)
+  - 2 gemme di tormalina verde (50 mo cad.)
+  - 1 pozione di guarigione superiore (4d4+4 PF)
+  - 1 anello d'argento con runa nanica (25 mo, +1 a
+    Carisma con un nano se mostrato — easter egg)
+  - 1 bacchetta di individuazione del magico (oggetto
+    magico comune, 7 cariche, ricarica 1d6+1 all'alba)
+
+Tesoro extra dallo zombie:
+  - Una lettera bagnata indirizzata a "mia figlia Mira,
+    a Pietravalle" (gancio per una futura avventura).
+
+MAPPA C — CAMERA DEL FILONE NERO
+--------------------------------
+
+      [scala dalla Sez. 2]
+              ▲
+              │
+       ╔══════╧══════════════════════════╗
+       ║                                 ║
+       ║  ▣        ░░░░                  ║
+       ║          ░ C ░    ▣             ║
+       ║           ░░░                   ║   ▣ = carrelli
+       ║                       Z         ║       abbandonati
+       ║   ▣                             ║   C = Cubo Gelatinoso
+       ║         R           R           ║       (camuffato da
+       ║                                 ║        pozzanghera)
+       ║      ▓▓▓ filone nero ▓▓▓        ║   Z = Zombie Corvin
+       ║      ▓                  ▓       ║   R = sciami di ratti
+       ║      ▓                  ▓       ║   ✦ = nicchia luminosa
+       ║      ▓        ✦         ▓       ║       (tesoro)
+       ║      ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓        ║
+       ║                                 ║
+       ╚═════════════════════════════════╝
+
+
+================================================================
+CONCLUSIONE E RICOMPENSE
+================================================================
+
+RITORNO AL VILLAGGIO
+--------------------
+Brom e Tessa, se salvati, si uniscono ai PG nella risalita
+con la promessa di un pasto caldo. Il sindaco Aldovino paga
+le 150 mo promesse e — se Corvin è stato "riportato" anche
+solo come corpo per la sepoltura — aggiunge un cavallo da
+soma e una sella (valore 75 mo).
+
+La lettera di Corvin a sua figlia Mira è un seme per la
+prossima avventura: Mira vive a tre giorni di cammino, in
+una città mineraria più grande, e ha "altre carte di
+papà" che parlano di qualcosa sotto il filone nero...
+
+XP TOTALI
+---------
+  Sezione 1: 300 XP
+  Sezione 2: 400 XP (150 + 250)
+  Sezione 3: 600 XP
+  Bonus storia (ostaggi salvati): 200 XP
+  Bonus storia (lettera + indagine): 200 XP
+  ─────────────────────────────────────
+  TOTALE: ~1.700 XP (circa 425 XP a PG)
+  Sufficienti per arrivare a inizio 3° livello.
+
+TESORO TOTALE INDICATIVO
+------------------------
+  Monete: ~130 mo, ~122 ma, ~8 mp, ~40 me
+  Gemme:   1 quarzo (25 mo), 2 tormaline (100 mo)
+  Oggetti magici:
+    - Spada lunga +1 "Bordoluce"
+    - Bacchetta di individuazione del magico
+    - 2 pozioni di guarigione (1 normale, 1 superiore)
+    - 1 pergamena di arma magica
+  Equipaggiamento minore: collana di rame, anello d'argento
+
+================================================================
+NOTE DI BILANCIAMENTO PER IL DM
+================================================================
+- Se il party è di 3 PG: togliere 1 goblin dalla Sezione 1
+  e 1 sciame di ratti dalla Sezione 3.
+- Se il party è di 5 PG: aggiungere 1 goblin alla Sezione 2C
+  e portare i PF del Cubo a 50.
+- Riposi brevi: i PG dovrebbero poterne fare 1 tra la
+  Sezione 2 e la 3 (ad esempio nell'accampamento goblin
+  ripulito). Un riposo lungo non è opportuno: i mostri della
+  Sezione 3 si sposterebbero in cerca di prede.
+- Tono: cupo ma non horror. Le risate dei goblin in Sez. 2
+  servono a stemperare l'orrore della Sez. 3.
+
+                        — Buona partita! —
+================================================================

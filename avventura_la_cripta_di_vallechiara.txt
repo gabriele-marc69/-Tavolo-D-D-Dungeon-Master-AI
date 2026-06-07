@@ -1,0 +1,633 @@
+================================================================
+   LA CRIPTA DI VALLECHIARA
+   Avventura D&D 5.5 (One-Shot) — seguito di "Il Silenzio di Pietravalle"
+   Per 3 PG di 3° livello + Mira (PNG/AI di 2°)
+   Durata stimata: ~2 ore e mezza
+================================================================
+
+----------------------------------------------------------------
+PREMESSA PER IL DUNGEON MASTER
+----------------------------------------------------------------
+Il gruppo arriva a Vallechiara con il corpo di Nina avvolto in
+un lenzuolo bianco, deposto al fresco nella cappella locale.
+La speranza è una sola: l'abate Kaelen, sacerdote di Eleria,
+dea minore della guarigione, ha il potere — e i contatti — per
+tentare un Revivify. Ma non lo farà gratis.
+
+Kaelen pone una condizione: il rituale richiede una "Lacrima di
+Eleria", una gemma sacra trafugata dalla cripta del santo
+fondatore di Vallechiara, San Talvar, tre generazioni fa,
+quando la cripta fu sigillata dopo che la peste portò via metà
+del villaggio. Da allora nessuno è più sceso laggiù. Voci
+parlano di luci nelle fessure delle lastre, e di un canto
+sommesso che a volte sale dalla terra nelle notti senza luna.
+
+In verità, la cripta è stata profanata anni fa da un
+necromante minore, Selvio Cren, che ha trasformato la tomba di
+San Talvar nel proprio rifugio. La Lacrima di Eleria è ancora
+lì — ma Selvio se ne serve come fonte di potere. E sotto la
+cripta, in una sala dimenticata, c'è qualcosa di peggio: un
+frammento di "filone nero" che affiora dal sottosuolo, lo
+stesso male di Pietravalle.
+
+Struttura dell'avventura:
+  - Sezione 1: Il Patto con l'Abate           (~30 minuti)
+  - Sezione 2: I Sepolcri Superiori           (~45 minuti)
+  - Sezione 3: La Tomba di San Talvar         (~60 minuti)
+  - Conclusione: Il Rito                      (~15 minuti)
+
+Soglie di XP per livello 3 (party da 3 PG):
+  Facile 225 | Medio 450 | Difficile 675 | Mortale 1.100
+  XP totali distribuite nell'avventura: circa 2.000 XP
+  (sufficienti a portare il party verso il livello 4)
+
+Mira (PNG/AI di livello 2) accompagna il gruppo ma il DM la
+gestisce con un ruolo di supporto: scouting, scasso, un attacco
+furtivo a turno. Non conta nel calcolo delle soglie XP.
+
+
+================================================================
+SEZIONE 1 — IL PATTO CON L'ABATE
+================================================================
+
+SCENARIO
+--------
+Mattina a Vallechiara. La nebbia si solleva dai tetti d'ardesia.
+Nel cortile della piccola abbazia di Eleria, l'abate Kaelen
+attende il gruppo. È un uomo alto, magro, sulla sessantina,
+con barba bianca curata e una sciarpa di lana grezza sopra la
+veste. Le mani sono coperte di vecchie cicatrici di ustione —
+"da quando reggevo il turibolo da ragazzo", spiegherà se
+qualcuno chiede.
+
+Kaelen ha già visto Nina nella cappella. Sa cosa il gruppo
+vuole, prima ancora che lo chiedano.
+
+LE PAROLE DI KAELEN
+-------------------
+"Posso provarci. Il rituale ha un nome: Revivify. Ma la mia
+fede da sola non basta. Serve un focolare, un punto di
+ancoraggio per l'anima. Una pietra che ricordi cosa significa
+essere amati da una dea."
+
+"Si chiama Lacrima di Eleria. Era nella tomba di San Talvar,
+sotto questa abbazia. Un sacerdote indegno la prese settanta
+anni fa, prima che sigillassimo la cripta. Si chiamava Selvio
+Cren. Non è mai riemerso. Riportatemela, e Nina si risveglierà
+prima del tramonto. Avete tempo fino al terzo giorno: dopo,
+l'anima si allontana troppo perché il rito funzioni."
+
+Kaelen consegna ai PG:
+- Una chiave di ferro nero con tre denti (apre il primo
+  cancello della cripta).
+- Una preghiera scritta a mano su pergamena: se recitata in
+  presenza della Lacrima, la sblocca dal supporto magico.
+  ("Eleria, madre delle lacrime, rendimi ciò che era tuo".)
+- 3 fiale di acqua benedetta (1d6 danni radiosi vs non-morti
+  e celestiali malvagi, in beuta, attacco a distanza).
+
+PROVE DI ABILITÀ SUGGERITE
+--------------------------
+- Saggezza (Intuizione) CD 13: Kaelen non sta mentendo, ma
+  sta nascondendo qualcosa. Sa che laggiù c'è "qualcosa di
+  peggio del furto" — non ha mai voluto dirlo ai fedeli.
+- Intelligenza (Religione) CD 12: Eleria è una dea minore
+  legata alla guarigione e al lutto. La sua Lacrima è una
+  delle tre gemme sacre dell'ordine, le altre sono perdute.
+- Intelligenza (Storia) CD 14: settant'anni fa Vallechiara
+  fu colpita da una peste improvvisa che uccise quasi metà
+  della popolazione. La cripta fu sigillata "per pietà",
+  ma le cronache di quegli anni sono incomplete.
+- Carisma (Persuasione) CD 15: Kaelen può aggiungere una
+  pozione di guarigione superiore (4d4+4) all'equipaggiamento
+  iniziale. Solo se persuaso che il rischio è grande.
+
+CIÒ CHE MIRA RICORDA
+--------------------
+Mira non è mai entrata nella cripta, ma da bambina sentiva i
+vecchi del villaggio parlarne sottovoce. "Mio padre diceva che
+sotto Vallechiara c'è una sorgente di acqua nera. La gente del
+posto la chiama 'l'occhio'. Forse è una sciocchezza."
+(È un seme: l'occhio è una pozzanghera del filone nero che
+affiora nella Sezione 3.)
+
+INTERROGARE IL VILLAGGIO (OPZIONALE)
+-----------------------------------
+Se i PG fanno domande in giro prima di scendere:
+- L'oste, Brik: ricorda che da bambino vide "luci verdi nelle
+  fessure tra le pietre del sagrato, la notte di tutti i
+  santi". (Vero: emanazioni del filone nero.)
+- La vecchia Lìa, erbalista: vende loro (5 mo) un mazzetto
+  di assenzio essiccato. "Bruciatelo se sentite il canto.
+  Confonde le orecchie morte." (+1 al primo TS contro spavento
+  o charm da non-morto, una volta.)
+- Un bambino, Toro: dice di aver visto "una signora pallida"
+  uscire da una crepa nel muro della chiesa una notte.
+  Inventato? O un ghoul errante (vedi incontro casuale)?
+
+GANCI MORALI
+------------
+Kaelen, se interpellato, sarà chiaro su un punto: "Riportare
+indietro qualcuno costa. Se Nina torna, tornerà con qualcosa
+in più — un'ombra, un'eco. La morte non si dimentica del tutto.
+Siate pronti." (Spunto futuro per il DM: dopo la resurrezione,
+Nina avrà uno svantaggio sui TS contro la paura per una
+settimana, oppure un sogno ricorrente che la collega al filone.)
+
+
+================================================================
+SEZIONE 2 — I SEPOLCRI SUPERIORI
+================================================================
+
+SCENARIO
+--------
+L'ingresso alla cripta è dietro l'altare dell'abbazia, dietro
+una lastra di pietra scolpita con il sigillo di Eleria (una
+goccia stilizzata dentro un occhio). Kaelen la sposta con
+fatica. Una scala stretta scende per dieci metri nel buio.
+L'aria è secca, polverosa, e sa di incenso vecchio.
+
+In fondo, un corridoio porta a tre cripte successive:
+
+  A. L'Anticamera dei Confratelli (incontro)
+  B. La Sala delle Lapidi (puzzle/trappola)
+  C. La Porta del Santo (incontro + scoperta)
+
+A — L'ANTICAMERA DEI CONFRATELLI
+--------------------------------
+Una stanza ottagonale. Otto nicchie nelle pareti, ognuna con
+una statua di un confratello dell'ordine. Sul pavimento, un
+mosaico raffigurante una bilancia: su un piatto, una piuma;
+sull'altro, una lacrima.
+
+Quattro delle nicchie sono vuote — le statue giacciono a terra,
+spezzate. Le altre quattro contengono ancora il loro custode.
+Salvo che adesso quei custodi non sono più statue.
+
+Mostri:
+  - 3x Scheletri (con spade arrugginite)  (50 XP cad. = 150 XP)
+  - 1x Specter (un confratello tradito)   (200 XP)
+Totale: 350 XP — difficoltà MEDIA (per 3 PG di Lv3)
+
+Tattica: gli scheletri emergono dalle nicchie nel round 1, lo
+specter scivola dal pavimento del mosaico nel round 2. Lo
+specter usa Life Drain (mira chi ha meno PF) e fugge attraverso
+i muri se ridotto sotto 10 PF, riapparendo nella Sezione B.
+
+PROVE DI ABILITÀ
+----------------
+- Saggezza (Percezione) CD 13: notare che il mosaico al centro
+  è più nuovo del resto — è stato rifatto. Sotto c'è una
+  trappola? No: c'è la tomba dello specter, profanata.
+- Intelligenza (Religione) CD 14: chi è morto qui è stato
+  privato dei riti funebri; per questo si è trasformato. Una
+  preghiera di Gabr (con Persuasione/Religione CD 13) può
+  calmare temporaneamente lo specter (1 round di esitazione)
+  prima dell'attacco — bonus narrativo per giocatori attenti.
+
+TESORO
+------
+- In una nicchia spezzata, sotto i frammenti, un rosario
+  d'argento (valore 30 mo).
+- Una pergamena di Bless (incantesimo di 1° livello).
+- Sul cadavere vestito (lo specter ha lasciato un corpo
+  appassito): un anello di ottone con incisione "Per Eleria,
+  che si è ricordata di me." (15 mo, nessun potere magico —
+  ma se mostrato a Kaelen, lui pagherà 100 mo per riaverlo:
+  era di suo nonno.)
+
+B — LA SALA DELLE LAPIDI (TRAPPOLA + ENIGMA)
+--------------------------------------------
+Un corridoio lungo dodici metri, con lapidi di marmo
+incassate nei muri. Quattordici nomi, quattordici date di
+morte tutte dello stesso anno: 70 anni fa, l'anno della peste.
+Una lapide è vuota: nessun nome, solo una data — la stessa.
+
+Sul pavimento, ogni tre metri, una piastra di pressione
+camuffata da lastra di marmo.
+
+TRAPPOLA: PIASTRE DELLA PESTE
+-----------------------------
+- Saggezza (Percezione) CD 15 per individuarle.
+- Destrezza (Acrobazia) CD 13 per saltarle se viste.
+- Se attivate: una nube verdastra erutta dalle fessure.
+  Tutti nel corridoio: TS Costituzione CD 13.
+  Fallimento = avvelenati per 1 ora (svantaggio a tiri per
+  colpire e prove di abilità). Fallimento critico (1 nat) =
+  anche 2d4 danni veleno.
+- La nube si dissipa dopo 1 round, ma le piastre restano
+  attive (vanno bloccate con cunei o pesi).
+
+ENIGMA DELLA LAPIDE VUOTA
+-------------------------
+La lapide senza nome ha incise solo queste parole:
+  "Chi non fu pianto, non riposa.
+   Pronuncia un nome, e apri la via."
+
+Soluzione: i PG devono pronunciare uno dei nomi degli altri
+quattordici defunti. Qualsiasi nome funziona — la lapide
+scivola di lato, rivelando un passaggio. Se nessuno legge le
+lapidi (Intelligenza Investigazione CD 10 le rende leggibili,
+sono polverose), Mira propone l'idea: "Mio padre diceva che
+i morti dimenticati cercano qualcuno che li ricordi."
+
+(Se i PG forzano il passaggio: Forza CD 18 per scardinare,
+oppure 30 PF di danno alla lapide. Ma facendolo, attivano un
+incontro extra di 2 scheletri.)
+
+C — LA PORTA DEL SANTO
+----------------------
+Oltre il passaggio, una piccola sala. Una porta di bronzo
+massiccia, sigillata con quattro chiavistelli e simboli di
+Eleria. La chiave di Kaelen apre il primo. Gli altri tre
+chiavistelli sono già rotti — qualcuno li ha forzati anni fa.
+
+Davanti alla porta, un guardiano:
+
+Mostro:
+  - 1x Animated Armor (armatura rituale)   (200 XP)
+  - 1x Crawling Claw rinforzato (3 PF, 1d4 graffio)
+    (10 XP, decorativo, può essere ignorato o calpestato)
+Totale: 210 XP — difficoltà FACILE per 3 PG di Lv3
+
+Tattica: l'armatura era un guardiano antico, ormai semi-
+fallito. Combatte ma è lenta (svantaggio a iniziativa). Se
+sconfitta, dentro l'armatura non c'è nulla — solo polvere
+e un piccolo medaglione di rame con incisione "T.K." (Kaelen
+lo riconoscerà: era di sua madre, Talinda Kaelen — la madre
+fu sepolta qui, ma il corpo è scomparso. Aggancio futuro.)
+
+DIETRO LA PORTA
+---------------
+La porta si apre su una scala a chiocciola in pietra che
+scende per quindici metri. In fondo, un debole bagliore
+verdastro pulsante. Si sente un canto sommesso, in una lingua
+non riconoscibile (Religione CD 16: liturgia di Eleria
+distorta, recitata al contrario).
+
+MAPPA — SEPOLCRI SUPERIORI
+---------------------------
+
+                  [da abbazia]
+                       ▲
+                       │
+                       ▼
+              ╔═══════════════╗
+              ║       A       ║      A = Anticamera dei
+              ║  ◊   ◊   ◊    ║          Confratelli
+              ║      ⛁        ║      ◊ = nicchie (4 con
+              ║  ◊   ⚖   ◊    ║          scheletri)
+              ║      ◇        ║      ⚖ = mosaico/specter
+              ║  ◊   ◊   ◊    ║      ⛁ = statua spezzata
+              ╚═══════╤═══════╝
+                      │
+              ╔═══════╧═════════════════════════╗
+              ║  ◫  ◫  ◫  ◫  ◫  ◫  ◫  ◫  ◫  ◫  ║   B = Sala delle
+              ║  ░░ TRAPPOLE ░░░░ TRAPPOLE ░░░  ║       Lapidi
+              ║  ◫  ◫  ◫  ◫  ◫  ◫  ◫  ◫  ▢  ◫  ║   ◫ = lapidi
+              ║                                ║   ▢ = lapide vuota
+              ╚═══════════════════╤════════════╝
+                                  │
+                          ╔═══════╧═══════╗
+                          ║       C       ║   C = Porta del Santo
+                          ║      ☗        ║   ☗ = Animated Armor
+                          ║    ║   ║      ║   ║ = porta di bronzo
+                          ║    ╚═╤═╝      ║
+                          ╚══════╪════════╝
+                                 │
+                            scala ↓
+                        verso Sezione 3
+
+
+================================================================
+SEZIONE 3 — LA TOMBA DI SAN TALVAR
+================================================================
+
+SCENARIO
+--------
+La scala scende in una grande sala circolare, di forse
+quindici metri di diametro. Al centro, su un piedistallo di
+marmo bianco, giace il sarcofago aperto di San Talvar —
+vuoto. Le ossa del santo non ci sono.
+
+Tutto intorno al sarcofago, candele nere accese di recente.
+Ai piedi del piedistallo, in un alveolo scavato nella pietra,
+brilla la LACRIMA DI ELERIA: una gemma color azzurro pallido
+grande come un uovo di piccione, sospesa in aria a un dito
+dal pavimento, ruotando lentamente. È quello che il gruppo
+è venuto a prendere.
+
+Ma Selvio Cren è lì.
+
+Il necromante è un uomo magrissimo, vestito di una tonaca
+sacerdotale strappata. Ha gli occhi bianchi come uova lessate
+— ciechi, ma "vede" attraverso i suoi non-morti. Sta in piedi
+sul lato opposto del sarcofago, e parla per primo:
+
+"Settant'anni. Settant'anni a vegliare la sua tomba. E voi
+arrivate, e credete di prenderla in un pomeriggio?"
+
+(Se i PG hanno l'inspirazione di parlare con lui, Selvio
+rivelerà che ha sigillato la Lacrima per proteggerla — non
+da loro, ma da CIÒ CHE È SOTTO. Indica una fessura nel
+pavimento, da cui esce un debole bagliore verde-nero. È il
+filone nero che affiora qui. Selvio è un fanatico, ma sta
+cercando di contenere qualcosa di più grande di lui. Trattare
+con lui è possibile ma difficile: vuole essere riconosciuto
+come il vero custode della cripta.)
+
+INCONTRO FINALE: IL CUSTODE PROFANO
+-----------------------------------
+Mostri:
+  - 1x Selvio Cren (Cult Fanatic modificato)  (450 XP)
+  - 2x Zombie (ossa di San Talvar e di
+    Talinda Kaelen, l'aggancio della
+    Sezione 2)                                (100 XP × 2 = 200 XP)
+  - 1x Filone Nero che affiora* (oggetto
+    ambientale)                               (vedi sotto)
+Totale: 650 XP — difficoltà MEDIO-DIFFICILE
+
+* IL FILONE NERO AFFIORANTE non è una creatura. È un'area di
+  3x3 metri al centro-est della sala, una pozza di pietra
+  liquida nera che pulsa. Chi vi entra (volontariamente o
+  spinto): TS Costituzione CD 13, fallimento = 2d6 danni
+  necrotici e svantaggio al prossimo TS. Selvio sa di
+  evitarla; gli zombi no. Sopra la pozza, l'aria distorce le
+  fonti di luce (svantaggio a tiri per colpire a distanza
+  oltre 6 m che attraversano l'area).
+
+SELVIO CREN (statistiche)
+-------------------------
+  CA 13 (armatura cerimoniale)   PF 33   Velocità 9 m
+  FOR 11 (+0) DES 14 (+2) COS 12 (+1) INT 13 (+1) SAG 14 (+2) CAR 11 (+0)
+  TS: SAG +4
+  Abilità: Religione +3, Persuasione +2
+  Sensi: Vista cieca 9 m, passiva Percezione 12
+  Incantesimi (CD 12):
+    Cantrip: Spare the Dying, Toll the Dead (1d8 necrotico,
+             TS Saggezza CD 12, 1d12 se PF non massimi)
+    1° lvl (2 slot): Inflict Wounds (3d10 necrotico in mischia),
+                     Bane (3 bersagli, -1d4 ai tiri/TS)
+    2° lvl (1 slot): Hold Person (TS Saggezza CD 12,
+                                  paralizzato 1 minuto)
+  Azioni:
+    - Pugnale sacrificale +4, 1d4+2 perforante + 1d6 necrotico
+    - Comando dei Morti (azione bonus, 1/scontro): uno zombi
+      ottiene un attacco extra.
+  Tattica: si tiene a distanza, lancia Bane sul gruppo, poi
+  Hold Person sul guerriero (Pip), poi Toll the Dead. Usa
+  gli zombi come scudo. Se ridotto a meno di 10 PF, può
+  trattare: offre la Lacrima in cambio della vita e di
+  un giuramento di "tornare a riferire all'abbazia che il
+  filone deve essere sigillato di nuovo".
+
+DINAMICA DELL'INCONTRO
+----------------------
+Round 1: dialogo possibile. Se i PG aprono ostili, Selvio
+         lancia Bane. Gli zombi attaccano subito.
+Round 2: emergono i due zombi (Talvar e Talinda). Talinda
+         indossa ancora un velo da sposa polveroso —
+         dettaglio narrativo per Kaelen.
+Round 3+: Selvio cerca di spingere un PG nella pozza con
+          Toll the Dead a bersaglio singolo, poi sfrutta lo
+          svantaggio. Se il combattimento si trascina, il
+          filone nero "pulsa" più forte: ogni round, chi è
+          entro 6 m della pozza tira TS Saggezza CD 11 o
+          subisce visioni (svantaggio al prossimo tiro per
+          colpire). Selvio ne è immune: ci convive da anni.
+
+LA SCELTA SUL FILONE
+--------------------
+Dopo il combattimento, i PG si trovano di fronte alla pozza
+del filone nero. Sul bordo, intagliato nella pietra, c'è un
+sigillo antico: un cerchio di sette rune, in lingua celestiale.
+Tre rune sono ancora attive (luminescenti); quattro sono
+spente.
+
+PROVE
+-----
+- Intelligenza (Arcano) CD 14 — Efi: il sigillo è un
+  contenimento. Selvio lo ha indebolito ogni volta che ha
+  attinto al filone per il suo necromanzia. Riparare il
+  sigillo richiederebbe un chierico di alto livello e
+  almeno una settimana.
+- Intelligenza (Religione) CD 13 — Gabr: la lingua è
+  celestiale arcaica. Le parole significano "Sotto il velo
+  del mondo, dormi". È un canto di sigillo eleriano.
+- Saggezza (Sopravvivenza) CD 13 — Mira: c'è un passaggio
+  sotto il filone. Una galleria scava verso il basso,
+  attraverso la pietra. Qualcosa, sotto, sta crescendo.
+
+I PG possono:
+  (a) Prendere la Lacrima e andarsene. Il sigillo continuerà
+      a indebolirsi, ma per ora regge. Aggancio per la
+      prossima avventura.
+  (b) Tentare un sigillo improvvisato con l'acqua benedetta
+      di Kaelen. Una fiala basta per ripristinare una runa
+      (Religione CD 13 per usarla bene). Con tutte e tre,
+      tre rune extra si riattivano: il sigillo torna a sei
+      rune su sette. Bonus storia di 200 XP.
+  (c) Scendere nella galleria. NON consigliato — il DM può
+      descrivere un'aria così pesante che le torce si
+      spengono entro tre metri di profondità, e ritrarsi è
+      saggio. (Se i giocatori insistono, fissare un altro
+      one-shot più letale: la galleria conduce a una camera
+      con un'entità "sopita" che sarà la BBEG della prossima
+      avventura — ma a livello 3 è quasi sicuramente TPK.)
+
+PRENDERE LA LACRIMA
+-------------------
+La Lacrima è ancorata da quattro filamenti di necromanzia
+violacea — è quello che Selvio ha aggiunto. Si scioglie con:
+  - La preghiera di Kaelen (lettura ad alta voce, 1 azione).
+  - Oppure: un colpo di fonte di danno radiante (Sacred
+    Flame, acqua benedetta lanciata sulla gemma).
+Una volta libera, la Lacrima galleggia per un secondo, poi
+cade nella mano di chi pronuncia la preghiera. È fredda al
+tatto ma "non ostile".
+
+TESORO
+------
+- Selvio porta addosso:
+    50 mo, 1 ametista (50 mo)
+    Un simbolo sacro corrotto di Eleria (sbagliato,
+    inutilizzabile come focus — ma rivendibile a un
+    collezionista per 20 mo)
+    Un diario in pelle nera (vedi sotto).
+- Nel sarcofago aperto: una corona di rame sbalzato (75 mo),
+  una mantella ricamata d'oro (intagliabile in 30 mo di
+  filo dorato), un'ampolla vuota.
+- Nascosta dietro il piedistallo (Investigare CD 14):
+    1 pozione di guarigione (2d4+2)
+    1 pozione di volare (volo per 10 minuti)
+    1 pergamena di Speak with Dead
+
+IL DIARIO DI SELVIO
+-------------------
+Sette pagine. Le prime sono le confessioni di un sacerdote
+che ha perso la fede e ha cercato di "guarire" la peste con
+arti negromantiche. Le ultime sono confuse e tracciate da
+una mano tremante: parlano di "un canto che sale da sotto",
+di "una bocca che mangia gli incantesimi", e di "un nome che
+non oso scrivere — comincia con O e finisce in catene".
+(Per il DM: questo è il seme della terza avventura. Il "nome
+con la O e le catene" è Ossavaen, un'entità imprigionata
+nelle profondità da un ordine antico precedente all'Impero.
+Il filone nero è la sua tomba che si crepa.)
+
+
+================================================================
+CONCLUSIONE: IL RITO
+================================================================
+
+IL RITORNO ALL'ABBAZIA
+----------------------
+Risaliti i tre piani della cripta, i PG emergono nell'abbazia
+verso sera. Kaelen li attende — non si è mosso. La Lacrima
+torna nelle sue mani con quasi un sospiro.
+
+"Avete fatto presto. Bene. Portatela."
+
+Nina giace ancora nella cappella, pallida, immobile. Kaelen
+accende sei candele attorno al corpo, depone la Lacrima sul
+petto di Nina, e canta. Il canto dura nove minuti — l'aria
+diventa più fredda, poi più calda, poi profuma di sale e di
+pioggia.
+
+Nina inspira.
+
+Apre gli occhi grigi. Non parla per un lungo momento. Poi
+mormora: "Ho sentito qualcosa, sotto. Stava cantando il
+mio nome."
+
+(Per il DM: Nina torna a 1 PF, con livelli di sfinimento 2
+per 1d4 giorni — regola standard di Revivify in 5.5. Il DM
+può decidere se aggiungere il "tocco" di Kaelen: per una
+settimana, Nina ha svantaggio sui TS contro la paura. Dopo
+quella settimana, ottiene invece un sogno ricorrente che la
+collega alla galleria del filone — utile per inquadrarla
+come motivata a indagare nella prossima avventura.)
+
+LE PAROLE DI KAELEN
+-------------------
+"Ho mantenuto la mia parola. Ora mantenete voi la vostra:
+non parlate a nessuno della cripta. Vallechiara non deve
+sapere. E... tornate, se sentite il canto. So che lo sentirete.
+Voi avete visto il filone nero due volte ormai. La terza volta
+non sarà un caso."
+
+Kaelen offre alloggio gratuito per tre notti e una benedizione:
+ogni PG può tirare un dado vita extra al prossimo riposo lungo
+(equivalente di mezzo livello di guarigione bonus, una sola
+volta — bonus narrativo).
+
+XP TOTALI
+---------
+  Sezione 1: 100 XP (interpretazione, raccolta info)
+  Sezione 2: 560 XP (350 anticamera + 210 porta)
+  Sezione 3: 650 XP (incontro finale)
+  Bonus storia (Lacrima recuperata): 300 XP
+  Bonus storia (Nina riportata in vita): 200 XP
+  Bonus storia (sigillo riparato, opzionale): +200 XP
+  ─────────────────────────────────────
+  TOTALE: ~2.000 XP (circa 670 XP a PG, fra Gabr, Pip, Efi)
+  Sufficienti per avvicinare il gruppo al 4° livello.
+  Nina riceve 0 XP (era morta), Mira riceve 670 XP / 3 = 223
+  XP (mezza condivisione, perché PNG di supporto).
+
+TESORO TOTALE INDICATIVO
+------------------------
+  Monete: ~50 mo da Selvio, ~75 mo corona, ~30 mo mantella,
+          ~30 mo rosario, ~15 mo anello, ~50 mo ametista
+  Totale liquido: ~250 mo
+  Gemme:   1 ametista (50 mo)
+  Oggetti magici:
+    - 1 pozione di guarigione normale
+    - 1 pozione di volare
+    - 1 pergamena di Speak with Dead
+    - 1 pergamena di Bless
+    - 1 medaglione "T.K." (sentimentale: 100 mo da Kaelen)
+  Bonus: ogni PG tira un dado vita extra al prossimo riposo
+
+
+================================================================
+PERSONAGGI NON GIOCANTI CHIAVE
+================================================================
+
+KAELEN, abate di Eleria
+  Età ~60. Saggio, stanco, custode di segreti.
+  Sa più di quanto dice. Onorerà sempre i patti.
+  Ricompenserà generosamente chi gli porta il medaglione T.K.
+  e chi salva sua madre Talinda dall'oblio (sepoltura
+  appropriata delle ossa: bonus 75 mo + benedizione extra).
+
+SELVIO CREN, necromante decaduto
+  Età indefinibile (apparenza ~50, vero ~95).
+  Antagonista grigio, non puro male. Se trattato con
+  rispetto, può sopravvivere e diventare un alleato
+  riluttante (vivente o non-morto cosciente — scelta del DM).
+
+MIRA, figlia di Corvin
+  Già nel gruppo. Durante l'avventura, ha l'occasione di
+  brillare nella Sezione 2B (è lei che intuisce l'enigma
+  della lapide vuota) e nella Sezione 3 (suggerisce di
+  guardare sotto il filone nero). Se il DM vuole, dopo
+  questa avventura Mira raggiunge il 3° livello (Ladro).
+
+NINA, chierica risorta
+  Torna in gruppo a 1 PF, livelli sfinimento 2, ancora a
+  livello 1 ma con tutta l'esperienza vissuta. Il DM può
+  permetterle di tirare un dado vita ogni riposo lungo
+  (recupero accelerato) e di salire automaticamente di
+  livello dopo il prossimo combattimento (recupero
+  narrativo: la sua anima "si riadatta" al corpo).
+
+
+================================================================
+GANCI PER L'AVVENTURA SUCCESSIVA
+================================================================
+
+- "Ossavaen e le catene": il nome scritto a malapena nel
+  diario di Selvio. Una ricerca in biblioteca (Vallechiara
+  o una città più grande, magari Brennapietra) potrebbe
+  rivelare che era una creatura sigillata 1.500 anni fa.
+- Il filone nero affiora in almeno tre punti della regione
+  (Pietravalle, Vallechiara, e un terzo da scoprire). Sta
+  crescendo.
+- Talinda Kaelen, la madre dell'abate, è morta in
+  circostanze sospette settant'anni fa. Le sue ossa erano
+  uno degli zombi nella tomba. Kaelen potrebbe chiedere ai
+  PG di indagare.
+- Nina sente il canto. Il legame con il filone potrebbe
+  rivelarsi un asset (lo sente prima degli altri) o una
+  maledizione (qualcosa la cerca).
+- Il sogno di Nina: ogni notte vede una galleria che scende
+  sotto Vallechiara. Una volta finita la galleria, c'è una
+  porta di pietra con sette catene. Una catena si è rotta.
+
+
+================================================================
+NOTE DI BILANCIAMENTO PER IL DM
+================================================================
+- Se il party è ridotto (solo 2 PG): togliere 1 scheletro
+  dalla Sezione 2A e 1 zombi dalla Sezione 3. Selvio inizia
+  con 25 PF anziché 33.
+- Se il party è espanso (4+ PG con Nina già risorta in
+  un'avventura ponte): aggiungere 1 scheletro a 2A, portare
+  Selvio a 45 PF, aggiungere 1 zombi alla scena finale.
+- Riposi brevi: i PG dovrebbero potere fare 1 riposo breve
+  fra la Sezione 2B e la 2C (passaggio dietro la lapide
+  vuota, prima della Porta del Santo).
+- Riposo lungo: NON nella cripta. Il filone nero "drena" i
+  riposi lunghi (regola opzionale): solo metà dei dadi vita
+  recuperati e nessun recupero di slot incantesimi.
+- Tono: cupo e sacro. Nessun horror gratuito. Le candele
+  nere, il canto al contrario, le ossa di una madre
+  servono al dramma, non allo splatter.
+- Inspirazione: assegnare un'inspirazione a chi tratta con
+  Selvio invece di attaccarlo subito, e a chi prega per i
+  morti senza nome nella Sezione 2A.
+
+                        — Buona partita! —
+                Che la Lacrima vi guidi a casa.
+================================================================

@@ -1,14 +1,14 @@
 @echo off
 REM ============================================================
-REM  Tavolo D&D - Installazione completa su PC nuovo (Windows)
+REM  Tavolo AI - Installazione completa su PC nuovo (Windows)
 REM ============================================================
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
-title Installazione Tavolo D^&D
+title Installazione Tavolo AI MAster  
 
 echo.
 echo ============================================================
-echo   TAVOLO D^&D - INSTALLAZIONE
+echo   TAVOLO - INSTALLAZIONE
 echo ============================================================
 echo.
 

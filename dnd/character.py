@@ -1,5 +1,5 @@
 """
-Generatore schede personaggio D&D 5.5e (SRD 5.2 — Playtest 2024).
+Generatore schede personaggio(SRD 5.2 — Playtest 2024).
 
 Tabelle: SPECIES (specie), CLASSES (classi), BACKGROUNDS (background, con
 talento iniziale), ALIGNMENTS.
@@ -10,11 +10,12 @@ talento iniziale), ALIGNMENTS.
 from __future__ import annotations
 
 import random
+import re
 from datetime import datetime
 from typing import Optional
 
-from .rules import (ability_mod, armor_class, initiative_mod,
-                    proficiency_bonus, spell_slots)
+from .rules import (ability_mod, armor_class, initiative_mod, level_for_xp,
+                    proficiency_bonus, spell_slots, xp_for_level)
 from .spells import normalize_spell_list
 
 
@@ -375,6 +376,22 @@ _MARK_GENERIC = ["una cicatrice sul volto", "un tatuaggio sull'avambraccio",
 # Equipaggiamento iniziale (semplificato)
 # ────────────────────────────────────────────────────────────────────────
 
+# Denominazioni di moneta (italiano): platino, oro, argento, rame.
+COIN_KINDS = ("mp", "po", "ma", "mr")
+
+# Oro iniziale (in pezzi d'oro) per classe — borsa di partenza a Lv1.
+CLASS_START_GOLD = {
+    "Barbaro": 60,  "Bardo": 100, "Chierico": 100, "Druido": 60,
+    "Guerriero": 120, "Monaco": 40, "Paladino": 120, "Ranger": 100,
+    "Ladro": 80,    "Stregone": 60, "Warlock": 80,  "Mago": 80,
+}
+
+
+def empty_treasure(gold: int = 0) -> dict:
+    """Borsa monete: pezzi di platino/oro/argento/rame. `gold` va nei po."""
+    return {"mp": 0, "po": max(0, int(gold or 0)), "ma": 0, "mr": 0}
+
+
 CLASS_GEAR = {
     "Barbaro":   ["Ascia bipenne", "2 asce da lancio", "Pacco da esploratore", "4 giavellotti"],
     "Bardo":     ["Spada lunga", "Pacco da intrattenitore", "Liuto", "Armatura di cuoio", "Pugnale"],
@@ -389,6 +406,93 @@ CLASS_GEAR = {
     "Warlock":   ["Balestra leggera + 20 quadrelli", "2 pugnali", "Armatura di cuoio", "Focus arcano", "Pacco da studioso"],
     "Mago":      ["Bastone", "Pugnale", "Libro degli incantesimi", "Pacco da studioso", "Focus arcano"],
 }
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Armi: database dado di danno / proprietà. Serve a costruire le voci
+# STRUTTURATE in sheet["weapons"] (dado, tipo danno, bonus d'attacco già
+# calcolato) così il sistema può generare il ROLL_REQ dei danni in
+# automatico dopo un colpo a segno, senza che il DM debba indovinare il dado.
+#
+# Ogni entry:
+#   match    → token (minuscoli) cercati come sottostringa nell'equipaggiamento
+#   die      → dado di danno base (es. "1d8")
+#   type     → tipo di danno (tagliente/perforante/contundente)
+#   abil     → "for" | "des" | "finesse" (accurata: usa il migliore tra FOR/DES)
+#   category → "Semplice" | "Marziale"
+#   versatile→ dado a due mani (None se non versatile)
+#   ranged   → arma a distanza (bonus di tiro = DES)
+#   props    → proprietà testuali (informative)
+# ────────────────────────────────────────────────────────────────────────
+WEAPON_DB = [
+    {"name": "Ascia bipenne",  "match": ["ascia bipenne"], "die": "1d12", "type": "tagliente",   "abil": "for",     "category": "Marziale", "versatile": None,  "ranged": False, "props": ["pesante", "due mani"]},
+    {"name": "Ascia da lancio","match": ["ascia da lancio", "asce da lancio"], "die": "1d6", "type": "tagliente", "abil": "for", "category": "Marziale", "versatile": None, "ranged": False, "props": ["leggera", "lancio"]},
+    {"name": "Spada lunga",    "match": ["spada lunga"],   "die": "1d8",  "type": "tagliente",   "abil": "for",     "category": "Marziale", "versatile": "1d10","ranged": False, "props": ["versatile"]},
+    {"name": "Spada corta",    "match": ["spada corta", "spade corte"], "die": "1d6", "type": "perforante", "abil": "finesse", "category": "Marziale", "versatile": None, "ranged": False, "props": ["leggera", "accurata"]},
+    {"name": "Stocco",         "match": ["stocco"],        "die": "1d8",  "type": "perforante",  "abil": "finesse", "category": "Marziale", "versatile": None,  "ranged": False, "props": ["accurata"]},
+    {"name": "Pugnale",        "match": ["pugnale", "pugnali"], "die": "1d4", "type": "perforante", "abil": "finesse", "category": "Semplice", "versatile": None, "ranged": False, "props": ["leggera", "accurata", "lancio"]},
+    {"name": "Mazza",          "match": ["mazza"],         "die": "1d6",  "type": "contundente", "abil": "for",     "category": "Semplice", "versatile": None,  "ranged": False, "props": []},
+    {"name": "Bastone ferrato","match": ["bastone ferrato"], "die": "1d6", "type": "contundente", "abil": "for",    "category": "Semplice", "versatile": "1d8", "ranged": False, "props": ["versatile"]},
+    {"name": "Bastone",        "match": ["bastone"],       "die": "1d6",  "type": "contundente", "abil": "for",     "category": "Semplice", "versatile": "1d8", "ranged": False, "props": ["versatile"]},
+    {"name": "Giavellotto",    "match": ["giavellott"],    "die": "1d6",  "type": "perforante",  "abil": "for",     "category": "Semplice", "versatile": None,  "ranged": False, "props": ["lancio"]},
+    {"name": "Dardo",          "match": ["dardi", "dardo"],"die": "1d4",  "type": "perforante",  "abil": "finesse", "category": "Semplice", "versatile": None,  "ranged": True,  "props": ["lancio"]},
+    {"name": "Arco lungo",     "match": ["arco lungo"],    "die": "1d8",  "type": "perforante",  "abil": "des",     "category": "Marziale", "versatile": None,  "ranged": True,  "props": ["munizioni", "due mani", "pesante"]},
+    {"name": "Arco corto",     "match": ["arco corto"],    "die": "1d6",  "type": "perforante",  "abil": "des",     "category": "Semplice", "versatile": None,  "ranged": True,  "props": ["munizioni", "due mani"]},
+    {"name": "Balestra leggera","match": ["balestra leggera"], "die": "1d8", "type": "perforante", "abil": "des", "category": "Semplice", "versatile": None, "ranged": True, "props": ["munizioni", "due mani"]},
+]
+
+
+def _dmg_roll(die: str, mod: int) -> str:
+    """'1d8' + mod → '1d8+3' / '1d8-1' / '1d8' (mod 0)."""
+    if mod > 0:
+        return f"{die}+{mod}"
+    if mod < 0:
+        return f"{die}{mod}"
+    return die
+
+
+def _build_weapons(equipment: list, stats: dict, pb: int) -> list:
+    """Scansiona l'equipaggiamento e costruisce le voci STRUTTURATE delle
+    armi: dado di danno, tipo, bonus d'attacco e tiro danni già calcolati
+    (mod abilità + competenza). I PG sono competenti con l'equipaggiamento
+    iniziale della classe, quindi il bonus competenza è sempre incluso."""
+    def _mod(ab: str) -> int:
+        v = (stats.get(ab) or {})
+        return int(v.get("mod", 0) or 0)
+
+    for_mod, dex_mod = _mod("FOR"), _mod("DES")
+    weapons: list = []
+    seen: set = set()
+    for raw in (equipment or []):
+        low = str(raw).lower()
+        for w in WEAPON_DB:
+            if any(tok in low for tok in w["match"]):
+                if w["name"] in seen:
+                    break
+                seen.add(w["name"])
+                if w["abil"] == "des":
+                    abil, amod = "DES", dex_mod
+                elif w["abil"] == "finesse":
+                    abil, amod = ("DES", dex_mod) if dex_mod >= for_mod else ("FOR", for_mod)
+                else:
+                    abil, amod = "FOR", for_mod
+                atk = amod + pb
+                weapons.append({
+                    "name":         w["name"],
+                    "category":     w["category"],
+                    "ability":      abil,
+                    "damage":       w["die"],
+                    "damage_type":  w["type"],
+                    "damage_mod":   amod,
+                    "damage_roll":  _dmg_roll(w["die"], amod),
+                    "attack_bonus": atk,
+                    "attack_roll":  f"1d20+{atk}" if atk >= 0 else f"1d20{atk}",
+                    "versatile":    (_dmg_roll(w["versatile"], amod) if w["versatile"] else None),
+                    "ranged":       w["ranged"],
+                    "properties":   list(w["props"]),
+                })
+                break
+    return weapons
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -564,7 +668,7 @@ def generate_sheet(
     rng: Optional[random.Random] = None,
 ) -> dict:
     """
-    Genera una scheda D&D 5.5e completa per il personaggio.
+    Genera una scheda completa per il personaggio.
     Lancia ValueError se specie/classe/background sono sconosciuti.
     """
     rng = rng or random
@@ -584,13 +688,24 @@ def generate_sheet(
     cls_data = CLASSES[cls]
     bg_data = BACKGROUNDS[background]
 
-    # Caratteristiche
+    # Caratteristiche. `score_base` è il punteggio "nudo" (senza oggetti
+    # magici): permette di ricalcolare `score` come base + bonus item ogni
+    # volta che cambia l'inventario sintonizzato.
     scores = _assign_stats(cls, sp_data)
-    stats = {ab: {"score": scores[ab], "mod": ability_mod(scores[ab])}
+    stats = {ab: {"score": scores[ab],
+                  "score_base": scores[ab],
+                  "mod": ability_mod(scores[ab])}
              for ab in ABILITIES}
 
-    # HP iniziali (Lv1 = max dado classe + mod COS)
-    hp_max = cls_data["hit_die"] + stats["COS"]["mod"]
+    # HP: Lv1 = max dado classe + mod COS. Ogni livello successivo aggiunge
+    # la media del dado (regola 5e per promozione a tavolo) + mod COS — stessa
+    # formula di apply_level_progression, così un PG creato a Lv N ha gli HP
+    # corretti invece di restare ai PF di Lv1.
+    hit_die = cls_data["hit_die"]
+    hp_max = hit_die + stats["COS"]["mod"]
+    if level > 1:
+        per_level_hp = max(1, hit_die // 2 + 1 + stats["COS"]["mod"])
+        hp_max += per_level_hp * (level - 1)
 
     # CA — calcolo semplificato: nessuna armatura = 10+DES, altrimenti
     # ipotizziamo armatura tipica della classe
@@ -660,7 +775,7 @@ def generate_sheet(
         "race":        species,  # alias retro-compatibile
         "class":       cls,
         "level":       level,
-        "xp":          0,
+        "xp":          xp_for_level(level),
         "background":  background,
         "feat_origin": bg_data["feat"],
         "alignment":   alignment,
@@ -671,10 +786,14 @@ def generate_sheet(
 
         "stats":       stats,
         "hp":          {"current": hp_max, "max": hp_max, "temp": 0},
+        "hp_max_base": hp_max,        # HP max "nudi" — bonus oggetti separati
         "ac":          ca,
+        "ac_base":     ca,            # CA senza magic_items: ricalcolata dai bonus
         "armor":       armor_desc,
         "initiative":  init,
+        "initiative_base": init,
         "speed":       sp_data["speed"],
+        "speed_base":  sp_data["speed"],
         "size":        sp_data["size"],
 
         "proficiency_bonus": pb,
@@ -682,6 +801,12 @@ def generate_sheet(
         "skills":            skills,
         "languages":         languages,
         "equipment":         equipment,
+        # Armi STRUTTURATE: dado di danno + bonus d'attacco già calcolati,
+        # estratti dall'equipaggiamento. Il sistema le usa per costruire il
+        # ROLL_REQ dei danni dopo un colpo a segno.
+        "weapons":           _build_weapons(equipment, stats, pb),
+        "magic_items":       [],   # artefatti magici / oggetti meravigliosi
+        "treasure":          empty_treasure(CLASS_START_GOLD.get(cls, 50)),
         "weapon_masteries":  masteries,
 
         "traits":         sp_data["traits"],
@@ -701,11 +826,477 @@ def generate_sheet(
 # Modifica manuale e migrazione schede
 # ────────────────────────────────────────────────────────────────────────
 
+_ITEM_MOD_KEYS = (
+    "ac", "initiative", "speed", "hp_max",
+    "save_dc", "attack_bonus", "save_all", "proficiency_bonus",
+)
+_ITEM_SAVE_ABILITIES = ("FOR", "DES", "COS", "INT", "SAG", "CAR")
+
+# ────────────────────────────────────────────────────────────────────────
+# Parser bonus da descrizione naturale
+# ────────────────────────────────────────────────────────────────────────
+# Riconosce stringhe come "+2 CA", "+1 a tutti i TS", "+2 FOR", "+5 HP max",
+# "-1 iniziativa" ecc. dentro la descrizione di un oggetto magico. Mappa la
+# label naturale alla chiave di `modifiers` usata da `_aggregate_item_modifiers`.
+_DESC_LABEL_TO_KEY = {
+    # CA
+    "ca": ("scalar", "ac"),
+    "ac": ("scalar", "ac"),
+    # HP
+    "hp": ("scalar", "hp_max"),
+    "hp max": ("scalar", "hp_max"),
+    "hp massimi": ("scalar", "hp_max"),
+    "pf": ("scalar", "hp_max"),
+    "pf max": ("scalar", "hp_max"),
+    "pf massimi": ("scalar", "hp_max"),
+    "punti ferita": ("scalar", "hp_max"),
+    # iniziativa
+    "iniziativa": ("scalar", "initiative"),
+    "init": ("scalar", "initiative"),
+    # velocità
+    "velocità": ("scalar", "speed"),
+    "velocita": ("scalar", "speed"),
+    "speed": ("scalar", "speed"),
+    "movimento": ("scalar", "speed"),
+    # CD incantesimi
+    "cd": ("scalar", "save_dc"),
+    "cd incantesimi": ("scalar", "save_dc"),
+    "save dc": ("scalar", "save_dc"),
+    # Bonus attacco
+    "tpc": ("scalar", "attack_bonus"),
+    "attacco": ("scalar", "attack_bonus"),
+    "attacchi": ("scalar", "attack_bonus"),
+    "bonus attacco": ("scalar", "attack_bonus"),
+    # TS generale
+    "tutti i ts": ("scalar", "save_all"),
+    "ts generale": ("scalar", "save_all"),
+    "ts generali": ("scalar", "save_all"),
+    "salvezze": ("scalar", "save_all"),
+    "tiri salvezza": ("scalar", "save_all"),
+    # competenza
+    "competenza": ("scalar", "proficiency_bonus"),
+}
+
+# Caratteristiche full-name → sigla.
+_DESC_ABILITY_ALIASES = {
+    "for": "FOR", "forza": "FOR",
+    "des": "DES", "destrezza": "DES",
+    "cos": "COS", "costituzione": "COS",
+    "int": "INT", "intelligenza": "INT",
+    "sag": "SAG", "saggezza": "SAG",
+    "car": "CAR", "carisma": "CAR",
+}
+
+# Token "[+/-]N" seguito (eventualmente da preposizione) da una label.
+# La label viene catturata in modo greedy fino al prossimo separatore così
+# match anche "tutti i TS" o "TS FOR".
+_DESC_BONUS_RE = re.compile(
+    r"""
+    ([+-]?\d+)                         # bonus numerico (con segno opzionale)
+    \s*
+    (?:a(?:lla|lle|i|gli|l)?\s+|al\s+|alla\s+)?  # "a / al / alla / ai" facoltativo
+    (
+        ts\s+(?:for|des|cos|int|sag|car|forza|destrezza|costituzione|intelligenza|saggezza|carisma)
+      | tutti\s+i\s+ts | ts\s+general[ei] | tiri\s+salvezza | salvezze
+      | cd\s+incantesimi | save\s+dc
+      | hp\s+(?:max|massimi)? | pf\s+(?:max|massimi)? | punti\s+ferita
+      | bonus\s+attacco
+      | velocit[àa] | iniziativa | movimento | speed | init
+      | competenza
+      | ca | ac
+      | tpc | attacco | attacchi
+      | for(?:za)? | des(?:trezza)? | cos(?:tituzione)? | int(?:elligenza)?
+      | sag(?:gezza)? | car(?:isma)?
+    )\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _extract_desc_modifiers(desc: str) -> dict:
+    """Scansiona la descrizione testuale di un oggetto magico e ricava un
+    dict `modifiers` compatibile con `_aggregate_item_modifiers`.
+
+    Es: "Anello di protezione · +2 CA"   → {"ac": 2}
+        "+1 FOR e +1 a tutti i TS"      → {"stat": {"FOR": 1}, "save_all": 1}
+        "+1 TS SAG"                      → {"save": {"SAG": 1}}
+
+    Restituisce {} se la stringa non contiene bonus riconoscibili. Non
+    lancia eccezioni: in caso di token ambiguo viene saltato.
+    """
+    if not isinstance(desc, str) or not desc.strip():
+        return {}
+    out: dict = {}
+    for m in _DESC_BONUS_RE.finditer(desc):
+        try:
+            val = int(m.group(1))
+        except (TypeError, ValueError):
+            continue
+        if val == 0:
+            continue
+        label = m.group(2).lower()
+        label = re.sub(r"\s+", " ", label).strip()
+
+        # TS singola caratteristica: "ts SAG"
+        if label.startswith("ts "):
+            ab_raw = label[3:].strip()
+            ab = _DESC_ABILITY_ALIASES.get(ab_raw)
+            if ab:
+                save = out.setdefault("save", {})
+                save[ab] = save.get(ab, 0) + val
+            continue
+
+        # Label diretta (tipo CA, HP, iniziativa, …)
+        mapping = _DESC_LABEL_TO_KEY.get(label)
+        if mapping:
+            kind, key = mapping
+            if kind == "scalar":
+                out[key] = out.get(key, 0) + val
+            continue
+
+        # Bonus a caratteristica (FOR/DES/...)
+        ab = _DESC_ABILITY_ALIASES.get(label)
+        if ab:
+            stat = out.setdefault("stat", {})
+            stat[ab] = stat.get(ab, 0) + val
+    return out
+
+
+def _normalize_magic_item(it):
+    """Porta una voce di `magic_items` al formato strutturato e auto-rileva
+    i bonus dichiarati in linguaggio naturale nella descrizione.
+
+    • Voci stringa "Nome | desc | flag" vengono ignorate (gestite a UI).
+      Convertiamo qui solo i dict, lasciando le stringhe intatte: l'editor
+      JS le riserializza in dict al salvataggio.
+    • Se `modifiers` è assente o vuoto e `desc` contiene pattern come
+      "+2 CA", lo riempiamo con `_extract_desc_modifiers(desc)`.
+    • Se almeno un bonus meccanico esiste (esplicito o estratto) e
+      `attuned` non è già True, forziamo `attuned=True`. In 5.5e un anello
+      di protezione che dichiara "+2 CA" deve poter agire sulla CA del PG
+      anche se l'utente non ha spuntato il flag a mano.
+    """
+    if not isinstance(it, dict):
+        return it
+    mods = it.get("modifiers")
+    has_explicit = isinstance(mods, dict) and any(
+        (k in _ITEM_MOD_KEYS and v) or (k == "stat" and v) or (k == "save" and v)
+        for k, v in mods.items()
+    )
+    if not has_explicit:
+        parsed = _extract_desc_modifiers(it.get("desc") or "")
+        if parsed:
+            # Conserva eventuali sotto-dict già presenti (es. modifiers vuoto
+            # ma con chiave "stat" preimpostata): merge superficiale.
+            existing = mods if isinstance(mods, dict) else {}
+            merged = dict(existing)
+            for k, v in parsed.items():
+                if k in ("stat", "save") and isinstance(v, dict):
+                    sub = dict(merged.get(k) or {})
+                    for ab, n in v.items():
+                        sub[ab] = (sub.get(ab, 0) or 0) + n
+                    merged[k] = sub
+                else:
+                    merged[k] = (merged.get(k, 0) or 0) + v
+            it["modifiers"] = merged
+            mods = merged
+
+    # Auto-sintonizzazione quando ci sono bonus reali da applicare.
+    if isinstance(mods, dict):
+        has_any = any(
+            (k in _ITEM_MOD_KEYS and v)
+            or (k in ("stat", "save") and isinstance(v, dict) and any(v.values()))
+            for k, v in mods.items()
+        )
+        if has_any and not it.get("attuned"):
+            it["attuned"] = True
+    return it
+
+
+def normalize_magic_items(items: list) -> list:
+    """Applica `_normalize_magic_item` in-place a ogni voce della lista.
+
+    Idempotente: chiamarla più volte non altera ulteriormente la scheda.
+    """
+    if not isinstance(items, list):
+        return items
+    for i, it in enumerate(items):
+        items[i] = _normalize_magic_item(it)
+    return items
+
+
+def _aggregate_item_modifiers(items: list) -> dict:
+    """Somma i bonus dei magic_items SINTONIZZATI in un unico dict.
+
+    Schema atteso per ogni voce attiva:
+        {"name": "...", "attuned": True,
+         "modifiers": {"ac": 1, "save_all": 1, "stat": {"DES": 2}, "save": {"SAG": 1}, ...}}
+
+    Solo gli oggetti con `attuned: True` contribuiscono (in 5.5e quasi ogni
+    artefatto richiede sintonizzazione). Voci stringa o senza `modifiers`
+    sono ignorate. Bonus stats vengono sommati al PUNTEGGIO (score), non
+    al modificatore: il `mod` viene poi ricalcolato.
+    """
+    out = {k: 0 for k in _ITEM_MOD_KEYS}
+    out["stat"] = {ab: 0 for ab in _ITEM_SAVE_ABILITIES}
+    out["save"] = {ab: 0 for ab in _ITEM_SAVE_ABILITIES}
+    if not isinstance(items, list):
+        return out
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if not it.get("attuned"):
+            continue
+        mods = it.get("modifiers")
+        if not isinstance(mods, dict):
+            continue
+        for k in _ITEM_MOD_KEYS:
+            try:
+                out[k] += int(mods.get(k, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+        stat_bonus = mods.get("stat")
+        if isinstance(stat_bonus, dict):
+            for ab, v in stat_bonus.items():
+                ab_up = str(ab).upper()
+                if ab_up in out["stat"]:
+                    try:
+                        out["stat"][ab_up] += int(v or 0)
+                    except (TypeError, ValueError):
+                        pass
+        save_bonus = mods.get("save")
+        if isinstance(save_bonus, dict):
+            for ab, v in save_bonus.items():
+                ab_up = str(ab).upper()
+                if ab_up in out["save"]:
+                    try:
+                        out["save"][ab_up] += int(v or 0)
+                    except (TypeError, ValueError):
+                        pass
+    return out
+
+
+def apply_item_modifiers(sheet: dict) -> None:
+    """Applica in-place i bonus degli oggetti magici sintonizzati alla scheda.
+
+    Il flusso è dichiarativo:
+      • `sheet["ac_base"]` = CA naturale (armatura + DES, calcolata in
+        `generate_sheet`). Sopravvive ai turni e all'aggiunta/rimozione di
+        oggetti.
+      • Ad ogni `apply_item_modifiers` la CA visibile (`sheet["ac"]`) viene
+        ricalcolata come `ac_base + bonus_oggetti.ac`.
+      • Stesso pattern per iniziativa, velocità, HP max, CD incantesimi,
+        bonus attacco, e per i punteggi delle caratteristiche.
+      • I bonus `save_all` e `save` non rientrano nei numeri base della
+        scheda (in 5.5e i TS sono `d20 + mod + pb`): vengono memorizzati
+        in `sheet["save_bonuses"]` (`{all:1, SAG:2, ...}`) così il
+        riquadro dadi può sommarli, e l'editor può visualizzarli.
+
+    Sicura da chiamare più volte: si rilegge sempre dal *_base.
+    """
+    if not isinstance(sheet, dict):
+        return
+    items = sheet.get("magic_items") or []
+    # Prima dell'aggregazione: estrai bonus dichiarati in linguaggio naturale
+    # dalla descrizione (es. "Anello di protezione · +2 CA") e auto-sintonizza
+    # gli oggetti che dichiarano effetti meccanici, così la CA del PG riflette
+    # davvero i bonus dichiarati nella scheda.
+    normalize_magic_items(items)
+    agg = _aggregate_item_modifiers(items)
+
+    # Caratteristiche: aggiungi bonus oggetti al score_base, poi ricalcola mod.
+    stats = sheet.get("stats")
+    if isinstance(stats, dict):
+        for ab, v in stats.items():
+            if not isinstance(v, dict):
+                continue
+            base = v.get("score_base")
+            if base is None:
+                # prima passata su scheda vecchia: lo score corrente È il base
+                base = v.get("score", 10)
+                v["score_base"] = int(base)
+            try:
+                base_int = int(base)
+            except (TypeError, ValueError):
+                base_int = 10
+            v["score"] = base_int + int(agg["stat"].get(ab, 0) or 0)
+            try:
+                v["mod"] = ability_mod(int(v["score"]))
+            except (TypeError, ValueError):
+                v["mod"] = 0
+
+    # CA: ac_base = senza oggetti; ac = ac_base + bonus
+    ac_base = sheet.get("ac_base")
+    if ac_base is None:
+        ac_base = sheet.get("ac", 10)
+        sheet["ac_base"] = int(ac_base or 10)
+    try:
+        sheet["ac"] = int(sheet["ac_base"]) + int(agg.get("ac", 0) or 0)
+    except (TypeError, ValueError):
+        pass
+
+    # Iniziativa, velocità, HP max: stesso pattern dichiarativo.
+    for field in ("initiative", "speed", "hp_max"):
+        base_key = field + "_base"
+        if field == "hp_max":
+            base_key = "hp_max_base"
+            current_hp = sheet.get("hp")
+            if not isinstance(current_hp, dict):
+                continue
+            if base_key not in sheet:
+                sheet[base_key] = int(current_hp.get("max", 0) or 0)
+            try:
+                current_hp["max"] = int(sheet[base_key]) + int(agg.get("hp_max", 0) or 0)
+                # HP correnti non possono superare il nuovo max
+                cur = int(current_hp.get("current", 0) or 0)
+                if cur > current_hp["max"]:
+                    current_hp["current"] = current_hp["max"]
+            except (TypeError, ValueError):
+                pass
+        else:
+            if base_key not in sheet:
+                sheet[base_key] = sheet.get(field, 0)
+            try:
+                sheet[field] = (float(sheet[base_key]) if field == "speed"
+                                else int(sheet[base_key])) \
+                               + int(agg.get(field, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+
+    # Bonus ai TS: memorizzati separatamente. Format:
+    #   {"all": N, "FOR": N, ..., "CAR": N}
+    save_bon = {"all": int(agg.get("save_all", 0) or 0)}
+    for ab in _ITEM_SAVE_ABILITIES:
+        save_bon[ab] = int(agg["save"].get(ab, 0) or 0)
+    if any(v for v in save_bon.values()):
+        sheet["save_bonuses"] = save_bon
+    elif "save_bonuses" in sheet:
+        # niente più bonus → rimuovi il campo per non sporcare la scheda
+        sheet.pop("save_bonuses", None)
+
+
+def sync_bases_from_update(sheet: dict, update: dict) -> None:
+    """Allinea i campi `*_base` ai valori top-level appena scritti dal DM.
+
+    Senza questa sincronizzazione un CHAR_UPDATE con `{"ac": 18}` viene
+    sovrascritto da `apply_item_modifiers` (che ricalcola `ac` come
+    `ac_base + bonus_oggetti`). Qui interpretiamo il valore scritto dal DM
+    come TOTALE desiderato: ridefiniamo `ac_base = ac - bonus_oggetti` così
+    il totale ricalcolato torna a coincidere col valore voluto. Stesso
+    pattern per iniziativa, velocità, HP max e punteggi caratteristica.
+    """
+    if not isinstance(sheet, dict) or not isinstance(update, dict):
+        return
+    # Normalizza prima così i bonus desc-parsed contano per il ribaltamento
+    # del *_base partendo dai valori totali scritti dal DM.
+    items = sheet.get("magic_items") or []
+    normalize_magic_items(items)
+    bonus = _aggregate_item_modifiers(items)
+
+    if "ac" in update:
+        try:
+            sheet["ac_base"] = int(update["ac"]) - int(bonus.get("ac", 0) or 0)
+        except (TypeError, ValueError):
+            pass
+    if "initiative" in update:
+        try:
+            sheet["initiative_base"] = int(update["initiative"]) - int(bonus.get("initiative", 0) or 0)
+        except (TypeError, ValueError):
+            pass
+    if "speed" in update:
+        try:
+            sheet["speed_base"] = float(update["speed"]) - int(bonus.get("speed", 0) or 0)
+        except (TypeError, ValueError):
+            pass
+    hp_upd = update.get("hp")
+    if isinstance(hp_upd, dict) and "max" in hp_upd:
+        try:
+            sheet["hp_max_base"] = int(hp_upd["max"]) - int(bonus.get("hp_max", 0) or 0)
+        except (TypeError, ValueError):
+            pass
+    stats_upd = update.get("stats")
+    if isinstance(stats_upd, dict):
+        stats = sheet.setdefault("stats", {})
+        for ab, val in stats_upd.items():
+            ab_up = str(ab).upper()
+            if ab_up not in ABILITIES or not isinstance(val, dict):
+                continue
+            if "score" not in val:
+                continue
+            target = stats.setdefault(ab_up, {})
+            try:
+                target["score_base"] = int(val["score"]) - int(bonus["stat"].get(ab_up, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+
+
+def apply_level_progression(sheet: dict) -> None:
+    """Auto level-up basato sugli XP cumulati della scheda.
+
+    Quando un CHAR_UPDATE alza gli XP oltre la soglia del livello successivo
+    aggiorniamo qui: `level`, gli HP max (media del dado classe + mod COS
+    per ogni nuovo livello, regola 5e per promozione a tavolo), il bonus di
+    competenza, e — per gli incantatori — gli slot incantesimo
+    (rigenerati col nuovo livello, preservando lo `used` dove la chiave
+    esiste ancora). Senza questo passo i PG salirebbero di XP ma non di
+    livello e gli slot resterebbero quelli del grado precedente.
+    """
+    if not isinstance(sheet, dict):
+        return
+    try:
+        xp = int(sheet.get("xp", 0) or 0)
+    except (TypeError, ValueError):
+        xp = 0
+    try:
+        old_lv = int(sheet.get("level", 1) or 1)
+    except (TypeError, ValueError):
+        old_lv = 1
+    new_lv = max(old_lv, level_for_xp(xp))
+    cls = sheet.get("class")
+    cls_data = CLASSES.get(cls, {})
+    if new_lv > old_lv:
+        hit_die = int(cls_data.get("hit_die", 8) or 8)
+        stats = sheet.get("stats") or {}
+        cos = stats.get("COS", {}) if isinstance(stats, dict) else {}
+        cos_mod = int(cos.get("mod", 0) or 0) if isinstance(cos, dict) else 0
+        per_level_hp = max(1, hit_die // 2 + 1 + cos_mod)
+        delta = new_lv - old_lv
+        hp_max_base = int(sheet.get("hp_max_base", 0) or 0)
+        sheet["hp_max_base"] = hp_max_base + per_level_hp * delta
+        sheet["level"] = new_lv
+        hp = sheet.setdefault("hp", {"current": 0, "max": 0, "temp": 0})
+        if isinstance(hp, dict):
+            try:
+                cur = int(hp.get("current", 0) or 0)
+                hp["current"] = cur + per_level_hp * delta
+            except (TypeError, ValueError):
+                pass
+    sheet["proficiency_bonus"] = proficiency_bonus(max(1, int(sheet.get("level", 1) or 1)))
+    caster = sheet.get("caster_type") or CASTER_TYPE.get(cls, "none")
+    if caster and caster != "none":
+        new_slots = spell_slots(caster, int(sheet.get("level", 1) or 1))
+        spells = sheet.setdefault("spells", {})
+        old_slots = spells.get("slots") if isinstance(spells, dict) else {}
+        if isinstance(old_slots, dict):
+            for k, v in new_slots.items():
+                old_sl = old_slots.get(k)
+                if isinstance(old_sl, dict):
+                    try:
+                        v["used"] = max(0, min(int(v["max"]),
+                                               int(old_sl.get("used", 0) or 0)))
+                    except (TypeError, ValueError):
+                        v["used"] = 0
+        spells["slots"] = new_slots
+
+
 def recompute_derived(sheet: dict) -> None:
     """
     Ricalcola in-place i valori derivati dopo una modifica manuale della
-    scheda: modificatori di caratteristica e CD/bonus degli incantesimi.
-    Da chiamare dopo un merge di modifiche dall'editor scheda.
+    scheda: modificatori di caratteristica, CD/bonus degli incantesimi, e
+    bonus degli oggetti magici sintonizzati (CA, iniziativa, HP max,
+    statistiche, TS).
+    Da chiamare dopo un merge di modifiche dall'editor scheda o dopo un
+    CHAR_UPDATE del DM (es. nuovo oggetto magico trovato).
     """
     if not isinstance(sheet, dict):
         return
@@ -727,8 +1318,16 @@ def recompute_derived(sheet: dict) -> None:
         ab = spells.get("ability")
         st = stats.get(ab, {}) if isinstance(stats, dict) else {}
         mod = st.get("mod", 0) if isinstance(st, dict) else 0
-        spells["save_dc"] = 8 + pb + mod
-        spells["attack_bonus"] = pb + mod
+        # Salva i valori "base" SE non già salvati: serve per ricalcolare
+        # quando un magic_item con save_dc/attack_bonus viene tolto.
+        if "_save_dc_base" not in spells:
+            spells["_save_dc_base"] = 8 + pb + mod
+        if "_attack_bonus_base" not in spells:
+            spells["_attack_bonus_base"] = pb + mod
+        spells["_save_dc_base"] = 8 + pb + mod
+        spells["_attack_bonus_base"] = pb + mod
+        spells["save_dc"] = spells["_save_dc_base"]
+        spells["attack_bonus"] = spells["_attack_bonus_base"]
         # normalizza le liste in dict {name, level, desc}: l'editor scheda
         # invia stringhe "Nome | descrizione", da ricondurre a struttura.
         spells["cantrips"] = normalize_spell_list(
@@ -744,6 +1343,31 @@ def recompute_derived(sheet: dict) -> None:
                     us = max(0, min(mx, int(sl.get("used", 0) or 0)))
                     sl["max"], sl["used"] = mx, us
 
+    # ULTIMO step: applica i bonus degli oggetti magici. Va DOPO il
+    # ricalcolo base di stats/spells così sovrascrive ac, hp_max,
+    # save_dc, attack_bonus con i valori complessivi (base + oggetti).
+    apply_item_modifiers(sheet)
+
+    # Riallinea save_dc/attack_bonus con i bonus oggetti se l'oggetto li
+    # tocca direttamente (oltre allo stat). _aggregate_item_modifiers li
+    # raccoglie ma _apply_item_modifiers non li ha applicati a spells:
+    # lo facciamo qui perché ora abbiamo `_save_dc_base` certo.
+    if isinstance(spells, dict) and spells.get("ability"):
+        agg = _aggregate_item_modifiers(sheet.get("magic_items") or [])
+        # se le stats sono cambiate per bonus item, ricalcola da capo
+        ab2 = spells.get("ability")
+        st2 = stats.get(ab2, {}) if isinstance(stats, dict) else {}
+        mod2 = st2.get("mod", 0) if isinstance(st2, dict) else 0
+        try:
+            lvl = int(sheet.get("level", 1) or 1)
+        except (TypeError, ValueError):
+            lvl = 1
+        pb2 = proficiency_bonus(lvl)
+        spells["_save_dc_base"] = 8 + pb2 + mod2
+        spells["_attack_bonus_base"] = pb2 + mod2
+        spells["save_dc"] = spells["_save_dc_base"] + int(agg.get("save_dc", 0) or 0)
+        spells["attack_bonus"] = spells["_attack_bonus_base"] + int(agg.get("attack_bonus", 0) or 0)
+
 
 def upgrade_sheet(sheet: dict) -> dict:
     """
@@ -758,6 +1382,68 @@ def upgrade_sheet(sheet: dict) -> dict:
     is_caster = bool(cls_data.get("spellcasting"))
     sheet["caster_type"] = (CASTER_TYPE.get(cls, "full")
                             if is_caster else "none")
+
+    # borsa monete: la aggiunge alle schede vecchie e completa le
+    # denominazioni mancanti senza toccare i valori già presenti.
+    tre = sheet.get("treasure")
+    if not isinstance(tre, dict):
+        tre = empty_treasure(CLASS_START_GOLD.get(cls, 50))
+        sheet["treasure"] = tre
+    else:
+        for k in COIN_KINDS:
+            try:
+                tre[k] = max(0, int(tre.get(k, 0) or 0))
+            except (TypeError, ValueError):
+                tre[k] = 0
+
+    # Inventario esteso: armi tenute (separate dall'equipaggiamento generico)
+    # e oggetti magici / artefatti. Schede vecchie senza questi campi vengono
+    # arricchite con liste vuote. Ogni voce può essere stringa o dict
+    # {name, desc, slot, attuned, modifiers: {...}}.
+    if not isinstance(sheet.get("weapons"), list):
+        sheet["weapons"] = []
+    # Backfill armi STRUTTURATE su schede vecchie: se `weapons` è vuoto (o
+    # contiene solo stringhe del vecchio formato) ricostruiscilo dal dado di
+    # danno a partire dall'equipaggiamento, così il sistema può tirare i danni.
+    _w = sheet.get("weapons") or []
+    _needs_weapons = (not _w) or all(not isinstance(x, dict) or "damage_roll" not in x for x in _w)
+    if _needs_weapons:
+        _stats = sheet.get("stats") if isinstance(sheet.get("stats"), dict) else {}
+        try:
+            _pb = int(sheet.get("proficiency_bonus") or proficiency_bonus(int(sheet.get("level", 1) or 1)))
+        except (TypeError, ValueError):
+            _pb = 2
+        _built = _build_weapons(sheet.get("equipment") or [], _stats, _pb)
+        if _built:
+            sheet["weapons"] = _built
+    if not isinstance(sheet.get("magic_items"), list):
+        sheet["magic_items"] = []
+
+    # Migrazione per il sistema modifiers: se mancano i campi `*_base`,
+    # inizializzali ai valori correnti (così la prima `apply_item_modifiers`
+    # non altera nulla — fino a che non viene equipaggiato un artefatto).
+    if "ac_base" not in sheet:
+        sheet["ac_base"] = sheet.get("ac", 10)
+    if "initiative_base" not in sheet:
+        sheet["initiative_base"] = sheet.get("initiative", 0)
+    if "speed_base" not in sheet:
+        sheet["speed_base"] = sheet.get("speed", 9)
+    hp = sheet.get("hp")
+    if isinstance(hp, dict) and "hp_max_base" not in sheet:
+        sheet["hp_max_base"] = int(hp.get("max", 0) or 0)
+    stats = sheet.get("stats")
+    if isinstance(stats, dict):
+        for v in stats.values():
+            if isinstance(v, dict) and "score" in v and "score_base" not in v:
+                try:
+                    v["score_base"] = int(v["score"])
+                except (TypeError, ValueError):
+                    v["score_base"] = 10
+
+    # Riallinea i valori esposti applicando i bonus degli oggetti magici
+    # sintonizzati (idempotente: legge dai *_base).
+    apply_item_modifiers(sheet)
+
     if not is_caster:
         return sheet
 
@@ -808,7 +1494,10 @@ def gender_list() -> list[str]:
 __all__ = [
     "SPECIES", "CLASSES", "BACKGROUNDS", "ALIGNMENTS", "GENDERS",
     "STANDARD_ARRAY", "ABILITIES", "CASTER_TYPE", "SPELL_ABILITY",
+    "COIN_KINDS", "CLASS_START_GOLD", "empty_treasure",
     "generate_sheet", "recompute_derived", "upgrade_sheet",
+    "apply_item_modifiers", "sync_bases_from_update",
+    "apply_level_progression", "normalize_magic_items",
     "species_list", "class_list",
     "background_list", "alignment_list", "gender_list",
 ]
