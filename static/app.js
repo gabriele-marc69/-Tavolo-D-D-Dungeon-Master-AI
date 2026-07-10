@@ -203,11 +203,19 @@ function ttsSpeakOne(plain) {
 }
 
 // Fallback: sintesi vocale del browser. `done` invocata a fine lettura.
+// Converte il rate Edge ("+20%", "-10%", "+0%") in fattore moltiplicativo
+// per la voce del browser (1.0 = normale). Limitato a [0.5, 2.0].
+function ttsRateFactor() {
+  const pct = parseInt(String(TTS.rate).replace('%', ''), 10) || 0;
+  return Math.min(2, Math.max(0.5, 1 + pct / 100));
+}
+
 function ttsSpeakBrowser(plain, done) {
   if (!('speechSynthesis' in window)) { if (done) done(); return; }
   try { window.speechSynthesis.cancel(); } catch (_) {}
   const u = new SpeechSynthesisUtterance(plain);
   u.lang = 'it-IT';
+  u.rate = ttsRateFactor();
   const it = window.speechSynthesis.getVoices()
     .find(v => (v.lang || '').toLowerCase().startsWith('it'));
   if (it) u.voice = it;
@@ -327,24 +335,19 @@ async function refreshWebchatStatus() {
     dmOpen = !!d.open;
     $('dm-name').textContent = d.name || '—';
     $('dm-dot').classList.toggle('on', dmOpen);
-    // Input chat abilitato SOLO quando il DM è aperto E il briefing
-    // iniziale è andato a buon fine (dmSynced). Senza questo check, un
-    // "START" partito mentre il briefing è ancora in volo arriverebbe al
-    // DM senza il contesto di partita (avventura, PG, stato).
-    const ready = dmOpen && dmSynced;
-    $('chat-input').disabled = !ready;
-    $('chat-send').disabled = !ready;
-    $('chat-input').placeholder = !dmOpen
-      ? 'DM non collegato — apri il Setup'
-      : !dmSynced
-        ? 'Sincronizzazione con il DM in corso…'
-        : 'Scrivi…';
+    // Tooltip sul badge DM: ultima fase del webchat (cosa sta facendo
+    // Chromium) senza dover aprire il pannello Debug.
+    const last = d.last || {};
+    $('dm-status').title = last.phase
+      ? `${last.phase}${last.detail ? ' — ' + last.detail : ''}${last.error ? ' ⚠ ' + last.error : ''}`
+      : '';
 
     // Verità sul briefing arriva SEMPRE dal server: se durante una nuova
     // avventura precaricata il server ha resettato `is_briefed()` perché
     // un re-briefing è in volo, il frontend deve scoprirlo (e ridisabilitare
     // l'input) — quindi non basta accendere dmSynced una volta sola.
     dmSynced = !!d.briefed;
+    let syncPlaceholder = '';
     if (dmOpen && !dmSynced) {
       const s = await fetch('/api/webchat/sync', { method: 'POST' })
         .then(x => x.json()).catch(() => ({}));
@@ -355,7 +358,7 @@ async function refreshWebchatStatus() {
         // Cambio modello: la richiesta a Chromium è SOSPESA finché non fai
         // login nella pagina del modello. Riparte da sola al polling dopo.
         awaitingLogin = true;
-        $('chat-input').placeholder = '🔑 Esegui il login nella pagina del modello…';
+        syncPlaceholder = '🔑 Esegui il login nella pagina del modello…';
         if (!loginNotified) {
           loginNotified = true;
           addMsg('system', '🔑 Modello cambiato: comunicazione sospesa. '
@@ -389,6 +392,24 @@ async function refreshWebchatStatus() {
       loginNotified = false;
       dmSyncNotified = false;
     }
+
+    // Input chat abilitato SOLO quando il DM è aperto E il briefing
+    // iniziale è andato a buon fine (dmSynced). Calcolato QUI, a flag
+    // aggiornati: prima avveniva all'inizio (su dmSynced del giro
+    // precedente) e l'abilitazione arrivava con ~5s di ritardo.
+    const ready = dmOpen && dmSynced;
+    $('chat-input').disabled = !ready;
+    $('chat-send').disabled = !ready || busy;
+    $('chat-input').placeholder = !dmOpen
+      ? 'DM non collegato — apri il Setup'
+      : !dmSynced
+        ? (syncPlaceholder || 'Sincronizzazione con il DM in corso…')
+        : 'Scrivi…';
+
+    // Tiri IA risolti ma mai narrati (es. parcheggiati da un briefing di
+    // ripresa): consegnali al DM da soli, la partita non deve congelarsi
+    // in attesa che il giocatore scriva qualcosa.
+    if (ready && !busy) maybeAutoContinue();
   } catch (e) { /* ignore */ }
 }
 
@@ -566,7 +587,7 @@ function renderPlayers() {
 // a 16×16 in fase di rendering (nearest-neighbor): il DM emette nuovi
 // sprite nativamente a 16×16 (16 righe da 16 cifre esadecimali).
 const SPRITE_PX = 16;    // pixel per lato di ogni cella renderizzata
-const MAP_MIN_SIDE = 6;
+const MAP_MIN_SIDE = 20;
 const MAP_MAX_SIDE = 40;
 
 // Larghezza/altezza correnti della mappa: legge da gameState; fallback su
@@ -810,9 +831,10 @@ function spriteForCell(ch, rows, x, y) {
   return DEFAULT_SPRITES[ch] || DEFAULT_SPRITES['.'];
 }
 
-// Disegna la mappa su un singolo <canvas> 200×200 (20 celle × 10 px),
-// scalato dal CSS con resa a pixel netti. Una putImageData per render.
-// Disegna la mappa dentro `root` (vi crea/aggiorna un <canvas> 200×200).
+// Disegna la mappa su un singolo <canvas> di W·16 × H·16 px (ogni cella
+// è uno sprite 16×16; mappa minima 20×20 → almeno 320×320 px), scalato
+// dal CSS con resa a pixel netti. Una putImageData per render.
+// Disegna la mappa dentro `root` (vi crea/aggiorna un <canvas>).
 // Usata sia dal pannello mappa sia dalla finestra ingrandita.
 function paintMap(root) {
   // Fallback: se la vista con fog (map_ascii) manca ma esiste la mappa
@@ -1034,10 +1056,64 @@ const LEGEND_DEFS = [
   { cls: 'lg-fog',     glyph: '',  label: 'Inesplorato',   chars: [' '] },
 ];
 
+// Disegna lo sprite di UN carattere su un piccolo <canvas> 16×16 (scalato
+// dal CSS): serve come pastiglia di legenda. Usa lo sprite custom del DM se
+// presente, altrimenti il default del carattere, altrimenti il pavimento.
+function _legendSwatchCanvas(ch) {
+  const custom = (gameState && gameState.sprites) || {};
+  const sp = custom[ch] || DEFAULT_SPRITES[ch] || DEFAULT_SPRITES['.'];
+  const cv = el('canvas', { class: 'lg-swatch' });
+  cv.width = SPRITE_PX; cv.height = SPRITE_PX;
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const img = ctx.createImageData(SPRITE_PX, SPRITE_PX);
+  const data = img.data;
+  const srcH = sp.length || 1;
+  for (let py = 0; py < SPRITE_PX; py++) {
+    const sy = Math.min(srcH - 1, Math.floor(py * srcH / SPRITE_PX));
+    const srow = sp[sy] || '';
+    const srcW = srow.length || 1;
+    for (let px = 0; px < SPRITE_PX; px++) {
+      const sx = Math.min(srcW - 1, Math.floor(px * srcW / SPRITE_PX));
+      const col = PALETTE[parseInt(srow[sx], 16) || 0] || PALETTE[0];
+      const di = (py * SPRITE_PX + px) * 4;
+      data[di] = col[0]; data[di + 1] = col[1];
+      data[di + 2] = col[2]; data[di + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
 function renderLegend() {
   const grids = document.querySelectorAll('.legend-grid');
   if (!grids.length) return;
   const m = (gameState && gameState.map_ascii) || '';
+  const dmLegend = (gameState && gameState.map_legend) || [];
+
+  // PRIORITÀ: legenda emessa dal DM (LEGENDA_START…LEGENDA_END). Mostra una
+  // pastiglia con lo sprite reale + l'etichetta, SOLO per i caratteri che
+  // compaiono davvero nella mappa corrente.
+  if (dmLegend.length) {
+    const present = new Set(m);
+    const entries = dmLegend.filter(e => e && e.char && present.has(e.char));
+    for (const g of grids) {
+      g.innerHTML = '';
+      if (!entries.length) {
+        g.innerHTML = '<span class="muted">— nessun simbolo —</span>';
+        continue;
+      }
+      for (const e of entries) {
+        const span = el('span', { class: 'lg-entry' });
+        span.appendChild(_legendSwatchCanvas(e.char));
+        span.appendChild(document.createTextNode(' ' + (e.label || e.char)));
+        g.appendChild(span);
+      }
+    }
+    return;
+  }
+
+  // Fallback storico: legenda hardcoded filtrata sui simboli presenti.
   if (!m) {
     for (const g of grids) g.innerHTML =
       '<span class="muted">— nessuna mappa —</span>';
@@ -1090,7 +1166,12 @@ function activePlayerInfo() {
   if (!gameState) return null;
   const ap = gameState.active_player;
   if (!ap) return null;
-  const p = (gameState.players || []).find(x => x.name === ap);
+  // confronto case-insensitive: il DM può scrivere il nome con maiuscole
+  // diverse dalla scheda — con il match esatto il PG umano di turno veniva
+  // mostrato come «(IA)» e il riquadro dadi non segnalava «Tocca a te».
+  const apLow = String(ap).trim().toLowerCase();
+  const p = (gameState.players || []).find(
+    x => (x.name || '').trim().toLowerCase() === apLow);
   if (!p) return { name: ap, isHuman: false };
   return { name: p.name, isHuman: p.type === 'human' };
 }
@@ -1399,7 +1480,10 @@ function applyFinalStateIfDone() {
     finalState = null;
   }
   // coda svuotata e streaming finito: ora è sicuro inviare i tiri accodati
-  if (streamDone && actionQueue.length === 0) maybeDrainRollQueue();
+  if (streamDone && actionQueue.length === 0) {
+    maybeDrainRollQueue();
+    maybeAutoContinue();   // tiri IA non narrati in coda → consegnali al DM
+  }
 }
 
 // Invia il prossimo tiro accodato SOLO se non resta nulla da scoprire e il
@@ -1410,6 +1494,34 @@ function maybeDrainRollQueue() {
   }
 }
 
+// Prosecuzione automatica dei turni IA: se ci sono tiri IA risolti ma non
+// ancora narrati (pending_roll_feedback) e NESSUN tiro umano in attesa,
+// il DM è appeso a quei risultati (es. dopo un briefing di ripresa che li
+// ha lasciati parcheggiati) — glieli consegniamo da soli con
+// /api/chat {continue:true}, senza aspettare che il giocatore scriva.
+// Ogni turno IA resta una bolla separata (coda «Prossima azione»):
+// sequenza chiara, uno step alla volta, ma la partita non si congela.
+let autoContinueKey = '';
+async function maybeAutoContinue() {
+  if (busy || actionQueue.length || rollQueue.length) return;
+  if (!dmOpen || !dmSynced || !gameState) return;
+  let fb = gameState.pending_roll_feedback || [];
+  let pend = gameState.pending_rolls || [];
+  if (!fb.length || pend.length) return;
+  // ricontrolla su stato FRESCO: gameState può essere stantio (es. il
+  // feedback è già stato consumato da un messaggio del giocatore).
+  try { await refreshState(); } catch (_) { return; }
+  if (busy) return;
+  fb = (gameState && gameState.pending_roll_feedback) || [];
+  pend = (gameState && gameState.pending_rolls) || [];
+  if (!fb.length || pend.length) return;
+  // anti-ripetizione: non rilanciare due volte per lo stesso feedback
+  const key = JSON.stringify(fb);
+  if (key === autoContinueKey) return;
+  autoContinueKey = key;
+  sendMessage(null, false, true);
+}
+
 // Tasto "Prossima azione": scopre la bolla successiva.
 (function () {
   const btn = $('next-action');
@@ -1418,7 +1530,9 @@ function maybeDrainRollQueue() {
 
 // retry=true: ricarica/rigenera l'ultima risposta del DM (nessun nuovo
 // messaggio del giocatore — il server riusa l'ultimo).
-async function sendMessage(explicitText, retry) {
+// cont=true: prosecuzione automatica — nessun messaggio del giocatore, il
+// server consegna al DM i tiri IA/note in sospeso e fa avanzare i turni.
+async function sendMessage(explicitText, retry, cont) {
   if (busy) return;
   resetActionQueue();   // nuovo turno: svuota le azioni in coda dal precedente
   const input = $('chat-input');
@@ -1431,6 +1545,8 @@ async function sendMessage(explicitText, retry) {
       log.removeChild(log.lastElementChild);
     }
     addMsg('system', '🔃 Rigenero l\'ultima risposta del DM…');
+  } else if (cont) {
+    addMsg('system', '▶ I PG IA e i mostri agiscono…');
   } else {
     if (typeof explicitText === 'string') {
       txt = explicitText.trim();      // tiro auto-inviato dal riquadro dadi
@@ -1440,6 +1556,7 @@ async function sendMessage(explicitText, retry) {
     }
     if (!txt) return;
     addMsg('user', txt);
+    autoContinueKey = '';   // nuovo input del giocatore: ri-arma l'auto-continue
   }
 
   busy = true;
@@ -1450,7 +1567,9 @@ async function sendMessage(explicitText, retry) {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(retry ? { retry: true } : { message: txt }),
+      body: JSON.stringify(retry ? { retry: true }
+                         : cont  ? { 'continue': true }
+                         : { message: txt }),
     });
 
     if (!resp.body) {
@@ -1507,6 +1626,7 @@ async function sendMessage(explicitText, retry) {
     // Se la coda non è vuota, il drain avviene quando il giocatore la
     // svuota col tasto "Prossima azione" (vedi maybeDrainRollQueue).
     maybeDrainRollQueue();
+    maybeAutoContinue();
   }
 }
 
@@ -3045,6 +3165,10 @@ async function renderDebugDm() {
               ).join(' | '))}</pre>`
           : '',
         mapCoherenceHtml(x.map),
+        `<pre class="debug-body ${x.map_extracted ? 'ok' : 'err'}">🗺 MAPPA ${
+            x.map_extracted ? 'estratta' : 'NON estratta'} ${
+            x.map_dims ? `(${x.map_dims[0]}×${x.map_dims[1]})` : ''}\n${
+            escapeHtml(x.map_ascii || '— vuota —')}</pre>`,
         (x.sprites && x.sprites.length)
           ? `<pre class="debug-body ok">🎨 SPRITE pixel-art: ${escapeHtml(x.sprites.join(' '))}</pre>`
           : '',
@@ -3233,7 +3357,9 @@ $('adventure-file').addEventListener('change', async (e) => {
         + `Il DM sta leggendo la trama e preparando la prima scena… (può richiedere 30-90 secondi)`);
       await refreshAdventureBadge();
       // Aspetta la scena di apertura prodotta dal DM in background.
-      const ok = await pollForOpeningScene();
+      // Timeout largo: il briefing chunked con l'avventura intera può
+      // superare abbondantemente i 4 minuti.
+      const ok = await pollForOpeningScene({ timeoutMs: 360000, intervalMs: 4000 });
       if (!ok) {
         addMsg('system', '⚠ Timeout in attesa della scena di apertura. '
           + 'Prova a scrivere **START** manualmente.');
@@ -3277,6 +3403,11 @@ $('btn-load').addEventListener('click', async () => {
     if (d.error) { addMsg('error', '⚠ ' + d.error); return; }
     gameState = d.state;
     $('chat-log').innerHTML = '';
+    // reset code client: azioni DM e tiri della sessione precedente non
+    // devono sopravvivere al ripristino (stesso reset di «Nuova»).
+    resetActionQueue();
+    rollQueue = [];
+    lastDmMessage = '';
     const n = await replayConversation();
     renderUI();
     if (d.resync) {
@@ -3315,14 +3446,35 @@ $('btn-new').addEventListener('click', async () => {
     : 'Iniziare una NUOVA partita? Lo storico verrà cancellato.';
   if (!confirm(ask)) return;
 
-  const r = await fetch('/api/new_game', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keep_characters: true }),
-  });
-  const d = await r.json();
+  // Con party pronto e DM collegato genereremo SUBITO l'avventura su
+  // misura: il server allora salta il briefing generico (il contesto
+  // completo parte con la richiesta di generazione, in una chat nuova).
+  const autoAdventure = hasChars && dmOpen;
+  let d;
+  try {
+    const r = await fetch('/api/new_game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keep_characters: true, auto_adventure: autoAdventure }),
+    });
+    d = await r.json();
+    if (!r.ok || d.error) {
+      addMsg('error', '⚠ Nuova partita fallita: ' + (d.error || ('HTTP ' + r.status)));
+      return;
+    }
+  } catch (e) {
+    addMsg('error', '⚠ Nuova partita fallita: ' + e.message);
+    return;
+  }
   gameState = d.state;
+  // Pulizia COMPLETA del client: chat, coda azioni DM, tiri accodati,
+  // turno TTS. Senza questo reset un tiro rimasto in rollQueue dalla
+  // partita vecchia partiva da solo nella nuova.
   $('chat-log').innerHTML = '';
+  resetActionQueue();
+  rollQueue = [];
+  lastDmTurn = [];
+  lastDmMessage = '';
   const kept = (gameState.players || []).length;
   addMsg('system', kept
     ? `Nuova avventura iniziata con ${kept} personagg${kept === 1 ? 'io' : 'i'} già pronti.`
@@ -3342,8 +3494,9 @@ $('btn-new').addEventListener('click', async () => {
     busy = true;
     $('chat-send').disabled = true;
     $('typing').classList.add('on');
-    addMsg('system', '📜 Il DM sta scrivendo un\'avventura su misura per il party… '
-      + 'può richiedere fino a un minuto e mezzo. Non chiudere la pagina.');
+    addMsg('system', '📜 Apro una conversazione nuova col DM e gli chiedo '
+      + 'un\'avventura su misura per il party… può richiedere fino a un '
+      + 'minuto e mezzo. Non chiudere la pagina.');
     const gr = await fetch('/api/generate_adventure', { method: 'POST' });
     const gd = await gr.json();
     if (gd.error) {
@@ -3355,8 +3508,8 @@ $('btn-new').addEventListener('click', async () => {
       + (gd.file ? `, salvata come ${gd.file}` : '') + '. '
       + `Il DM sta preparando la prima scena…`);
     await refreshAdventureBadge();
-    // Aspetta la scena di apertura prodotta dal briefing.
-    const ok = await pollForOpeningScene();
+    // Aspetta la scena di apertura prodotta dal briefing (chunked, lungo).
+    const ok = await pollForOpeningScene({ timeoutMs: 360000, intervalMs: 4000 });
     if (!ok) {
       addMsg('system', '⚠ Timeout in attesa della scena di apertura. '
         + 'Prova a scrivere **START** manualmente.');
@@ -3455,6 +3608,23 @@ async function redrawMap() {
     TTS.voice = e.target.value;
     localStorage.setItem('tts_voice', TTS.voice);
   });
+
+  // Cursore velocità di lettura — agisce sia su Edge TTS (rate "+N%") sia
+  // sulla voce del browser (fattore). 0% = normale, valori positivi = più
+  // veloce. La modifica vale dal prossimo brano letto.
+  const rateSlider = $('tts-rate');
+  if (rateSlider) {
+    const initPct = parseInt(String(TTS.rate).replace('%', ''), 10) || 0;
+    const rateLabel = (pct) => `Velocità di lettura: ${pct === 0 ? 'normale' : (pct > 0 ? '+' : '') + pct + '%'}`;
+    rateSlider.value = String(initPct);
+    rateSlider.title = rateLabel(initPct);
+    rateSlider.addEventListener('input', (e) => {
+      const pct = parseInt(e.target.value, 10) || 0;
+      TTS.rate = (pct >= 0 ? '+' : '') + pct + '%';
+      localStorage.setItem('tts_rate', TTS.rate);
+      rateSlider.title = rateLabel(pct);
+    });
+  }
 
   // Musica di sottofondo adattiva (richiede un gesto utente per partire)
   $('btn-music').addEventListener('click', musicToggle);

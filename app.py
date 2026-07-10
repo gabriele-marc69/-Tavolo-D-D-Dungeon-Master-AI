@@ -25,8 +25,10 @@ from datetime import datetime
 # in [WEBCHAT] crash → l'invio del prompt al DM non parte e Chromium
 # non riceve nulla quando il giocatore preme «Carica».
 try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 except (AttributeError, OSError):
     pass
 
@@ -111,6 +113,80 @@ if _saved_webchat_cfg:
     print(f"[WEBCHAT] modello ripristinato da config: {webchat.config.url}", flush=True)
 
 
+def _human_roll_names() -> list[str]:
+    """Nomi che identificano i PG UMANI nei ROLL_REQ: sia il nome del
+    giocatore sia quello della SCHEDA. Il DM usa indifferentemente l'uno o
+    l'altro nel campo "by"; se il nome non viene riconosciuto come umano il
+    sistema tira al posto del giocatore — il tiro deve invece finire nel
+    riquadro dadi."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for p in game_state.get("players", []):
+        if p.get("type") != "human":
+            continue
+        for n in (p.get("name"), (p.get("sheet") or {}).get("name")):
+            n = (n or "").strip()
+            if n and n.lower() not in seen:
+                seen.add(n.lower())
+                names.append(n)
+    return names
+
+
+def _default_human_roller() -> str | None:
+    """PG umano a cui attribuire un <ROLL_REQ> SENZA campo `by` (il DM l'ha
+    omesso pur essendo OBBLIGATORIO). Evita che il sistema tiri al posto del
+    giocatore quando il tiro è chiaramente suo. Ritorna il nome canonico se:
+      • è il turno di un PG umano (active_player), oppure
+      • c'è UN SOLO PG umano e nessun PG IA (partita in solitaria).
+    Altrimenti None (ambiguo o turno di IA/mostro → tira il sistema)."""
+    players = game_state.get("players", [])
+    humans = [p for p in players if p.get("type") == "human"]
+
+    def _canon(p: dict) -> str:
+        return ((p.get("name") or (p.get("sheet") or {}).get("name") or "")
+                .strip())
+
+    ap = (game_state.get("active_player") or "").strip().lower()
+    if ap:
+        # Turno esplicito: attribuisci solo se è di un umano; se è di un PG
+        # IA o di un mostro, un tiro senza `by` lo tira il sistema.
+        for p in humans:
+            names = {(p.get("name") or "").strip().lower(),
+                     ((p.get("sheet") or {}).get("name") or "").strip().lower()}
+            if ap in (names - {""}):
+                return _canon(p)
+        return None
+    # Nessun turno esplicito: solo se l'unico umano è anche l'unico a giocare
+    # (nessun PG IA) il tiro non etichettato è inequivocabilmente suo.
+    ai = [p for p in players if p.get("type") == "ai"]
+    if len(humans) == 1 and not ai:
+        return _canon(humans[0])
+    return None
+
+
+# Messaggio in ingresso che CONSEGNA risultati di tiri al DM: il tiro del
+# giocatore umano («[Efi lancia 1d20+4: risultato 17]») o il feedback dei
+# tiri risolti dal sistema. Solo in questi casi il DM può dichiarare
+# l'esito di una prova; altrimenti scatta la guardia anti-esiti-inventati.
+_RE_INCOMING_ROLL = re.compile(
+    r"lancia [^\[\]]+risultato|Risultati dei tiri richiesti")
+
+
+def _request_map_note(reason: str) -> None:
+    """Accoda (senza duplicare) una nota di sistema che chiede al DM di
+    riemettere la mappa. Consegnata col prossimo scambio."""
+    note = (
+        f"[Sistema] {reason} — riemetti SUBITO la mappa della scena "
+        "corrente come blocco MAP_START…MAP_END (marcatori NUDI su righe "
+        "proprie, niente < >, TUTTO il blocco dentro un recinto di codice "
+        "``` così le righe non vengono fuse dal rendering), minimo 20×20, "
+        "righe tutte della stessa larghezza, @ sulla cella attuale del party."
+    )
+    notes = game_state.setdefault("pending_dm_notes", [])
+    if note not in notes:
+        notes.append(note)
+
+
 def _apply_dm_response(raw_text: str, user_label: str = "[Briefing]") -> str | None:
     """Processa una risposta GREZZA del DM (es. quella del briefing iniziale
     dell'avventura precaricata): estrae mappa, STATE_UPDATE, CHAR_UPDATE,
@@ -120,8 +196,11 @@ def _apply_dm_response(raw_text: str, user_label: str = "[Briefing]") -> str | N
     se la risposta è vuota.
 
     Variante semplificata di `_dm_exchange` (in /api/chat): non gira il
-    follow-up loop dei ROLL_REQ (i tiri umani vanno comunque al riquadro
-    dadi; i ROLL_REQ IA li tirerà al prossimo messaggio del giocatore)."""
+    follow-up loop dei ROLL_REQ. I tiri umani vanno comunque al riquadro
+    dadi; i ROLL_REQ dei PG IA vengono risolti SUBITO dal sistema e i
+    risultati parcheggiati in `pending_roll_feedback`, così il primo
+    messaggio del giocatore li consegna al DM (che altrimenti resterebbe
+    appeso ad aspettarli per sempre)."""
     if not (raw_text or "").strip():
         return None
 
@@ -130,13 +209,8 @@ def _apply_dm_response(raw_text: str, user_label: str = "[Briefing]") -> str | N
         (raw_text or "").encode("utf-8", errors="replace")
     ).hexdigest()[:16]
 
-    human_names = [
-        p.get("name")
-        for p in game_state.get("players", [])
-        if p.get("type") == "human"
-    ]
     with_rolls, roll_results, pending_rolls = parser.resolve_roll_requests(
-        cleaned, human_names
+        cleaned, _human_roll_names(), _default_human_roller()
     )
 
     state_upd   = parser.extract_state(with_rolls)
@@ -144,6 +218,7 @@ def _apply_dm_response(raw_text: str, user_label: str = "[Briefing]") -> str | N
     map_block   = parser.extract_map(with_rolls)
     music_upds  = parser.extract_music(with_rolls)
     sprite_upds = parser.extract_sprites(with_rolls)
+    legend_upds = parser.extract_legend(with_rolls)
     cast_upds   = parser.extract_spell_casts(with_rolls)
 
     map_report = None
@@ -163,60 +238,32 @@ def _apply_dm_response(raw_text: str, user_label: str = "[Briefing]") -> str | N
         new_scene = (game_state.get("current_scene") or "").strip()
         scene_changed = bool(new_scene) and new_scene != prev_scene
         if map_block:
-            bw, bh = state_mod.measure_map(map_block)
-            norm = state_mod.normalize_map(map_block, bw, bh)
-            at = state_mod.find_position(norm, "@")
-            norm_no_at = norm.replace("@", ".")
-            prev_w = game_state.get("map_width") or 0
-            prev_h = game_state.get("map_height") or 0
-            prev_full = game_state.get("map_full") or ""
-            if (bw, bh) != (prev_w, prev_h) or norm_no_at != prev_full or scene_changed:
-                # cambia dimensione, layout O scena → fog azzerata
-                game_state["revealed_tiles"] = []
-            game_state["map_base"]   = norm_no_at
-            game_state["map_full"]   = norm_no_at
-            game_state["map_width"]  = bw
-            game_state["map_height"] = bh
-            if at:
-                game_state["current_position"] = [at[0], at[1]]
+            # GREZZO: disegna ESATTAMENTE la mappa del modello — niente
+            # normalizzazione, niente fog, niente controllo di coerenza.
+            state_mod.set_raw_map(game_state, map_block)
         elif scene_changed:
-            # Nuova scena ma il DM non ha emesso la mappa: NON azzeriamo
-            # quella precedente (lasciare il pannello vuoto = "mappa non
-            # disegnata"). La teniamo a video finché il DM non manda la
-            # nuova, e lo SOLLECITIAMO a ridisegnarla SUBITO al prossimo
-            # turno. Meglio una mappa un turno vecchia che nessuna mappa.
-            game_state.setdefault("pending_dm_notes", []).append(
-                f"[Sistema] NUOVA SCENA «{new_scene}» — emetti SUBITO una "
-                "MAPPA COMPLETAMENTE NUOVA (MAP_START…MAP_END) coerente "
-                "con questa scena: nuove dimensioni adatte al luogo, "
-                "nuovo layout di muri/decorazioni, tile coerenti "
-                "coll'ambientazione, mostri/PNG/tesori della scena. "
-                "NON riusare la mappa precedente."
-            )
-        pos = game_state.get("current_position") or [0, 0]
-        if game_state.get("map_full"):
-            map_report = state_mod.check_map_coherence(game_state["map_full"], pos)
-            sug = map_report.get("suggested_position")
-            if sug and list(sug) != list(pos):
-                pos = [sug[0], sug[1]]
-                game_state["current_position"] = pos
-        if game_state.get("map_full"):
-            state_mod.reveal_los(game_state, game_state["map_full"],
-                                 pos[0], pos[1], radius=10)
-        else:
-            state_mod.reveal_around(game_state, pos[0], pos[1], radius=2)
-        if game_state.get("map_full"):
-            game_state["map_ascii"] = state_mod.apply_fog(
-                game_state["map_full"],
-                game_state.get("revealed_tiles", []),
-                party_pos=pos,
-            )
+            # Nuova scena ma nessuna mappa: solleciti il DM a mandarla.
+            _request_map_note(f"NUOVA SCENA «{new_scene}» senza mappa")
+        elif (game_state.get("phase") in ("adventure", "combat")
+                and not (game_state.get("map_full") or "").strip()):
+            # In gioco ma NESSUNA mappa in stato (riquadro vuoto) e il DM
+            # non ne ha emessa una: sollecitalo anche senza cambio scena —
+            # altrimenti la mappa resta vuota per sempre.
+            _request_map_note("MAPPA MANCANTE (il riquadro mappa è vuoto)")
         for r in roll_results:
             state_mod.add_roll(game_state, r)
+        # Tiri IA risolti durante un briefing: NON c'è follow-up loop qui,
+        # quindi i risultati vanno parcheggiati per il prossimo /api/chat.
+        # Prima venivano scartati e il DM restava in attesa per sempre
+        # (es. tiri di iniziativa chiesti nel messaggio di apertura).
+        if roll_results:
+            game_state.setdefault("pending_roll_feedback", []).extend(roll_results)
         if music_upds:
             parser.apply_music_update(game_state, music_upds)
         if sprite_upds:
             parser.apply_sprites(game_state, sprite_upds)
+        if legend_upds:
+            parser.apply_legend(game_state, legend_upds)
         state_mod.sync_characters_from_players(game_state.get("players", []))
         game_state["pending_rolls"] = pending_rolls
         state_mod.save_state(game_state)
@@ -238,6 +285,9 @@ def _apply_dm_response(raw_text: str, user_label: str = "[Briefing]") -> str | N
             "shown":   display_text[:2000],
             "rolls":   roll_results,
             "map":     map_report,
+            "map_extracted": bool(map_block),
+            "map_dims": [game_state.get("map_width"), game_state.get("map_height")],
+            "map_ascii": (game_state.get("map_ascii") or "")[:1200],
             "sprites": sorted(sprite_upds.keys()),
             "casts":   cast_report,
         })
@@ -265,10 +315,14 @@ def index():
 
 @app.route("/api/state")
 def api_state():
+    # Serializza DENTRO il lock: i worker thread del DM mutano game_state
+    # in background e jsonify fuori dal lock può sollevare "dictionary
+    # changed size during iteration" a metà serializzazione.
     with _state_lock:
         for p in game_state.get("players", []):
             char_mod.upgrade_sheet(p.setdefault("sheet", {}))
-    return jsonify(game_state)
+        payload = json.dumps(game_state)
+    return Response(payload, mimetype="application/json")
 
 
 @app.route("/api/dnd_data")
@@ -595,13 +649,13 @@ def api_prepare_spell():
 
         def _has(lst, nm):
             n = nm.lower()
-            return any((s.get("name") if isinstance(s, dict) else str(s)).lower() == n
+            return any(((s.get("name") if isinstance(s, dict) else str(s)) or "").lower() == n
                        for s in lst)
 
         def _drop(lst, nm):
             n = nm.lower()
             return [s for s in lst
-                    if (s.get("name") if isinstance(s, dict) else str(s)).lower() != n]
+                    if ((s.get("name") if isinstance(s, dict) else str(s)) or "").lower() != n]
 
         cls = sheet.get("class") or ""
         kind = spells_mod.caster_kind(cls)
@@ -678,7 +732,7 @@ def api_cast_spell():
             hp = sheet.setdefault("hp", {})
             if isinstance(hp, dict):
                 try:
-                    mx_int = int(hp.get("max"))
+                    mx_int = int(hp.get("max") or 0)
                 except (TypeError, ValueError):
                     mx_int = None
                 if mx_int is not None and mx_int > 0:
@@ -708,8 +762,9 @@ def api_cast_spell():
         if not isinstance(spells, dict):
             return jsonify({"error": "Il personaggio non è un incantatore"}), 400
         slots = spells.setdefault("slots", {})
+        level_raw = body.get("level")
         try:
-            level = int(body.get("level"))
+            level = int(level_raw if level_raw is not None else "")
         except (TypeError, ValueError):
             return jsonify({"error": "Campo 'level' non valido"}), 400
         if level <= 0:
@@ -750,13 +805,30 @@ def api_roll():
     by = body.get("by")
     with _state_lock:
         state_mod.add_roll(game_state, {**result, "by": by})
-        # il giocatore ha lanciato: rimuovi il tiro in attesa corrispondente
+        # Il giocatore ha lanciato: rimuovi SOLO il tiro in attesa
+        # corrispondente — prima per espressione identica, altrimenti il
+        # primo a nome suo. Rimuoverli TUTTI per nome (come prima) faceva
+        # sparire il secondo tiro richiesto allo stesso PG (es. attacco +
+        # danni): il giocatore non lo vedeva mai nel riquadro dadi.
         pend = game_state.get("pending_rolls") or []
         if pend and by:
-            game_state["pending_rolls"] = [
-                p for p in pend
-                if (p.get("by") or "").strip().lower() != by.strip().lower()
-            ]
+            by_low = by.strip().lower()
+            expr_low = str(dice or "").replace(" ", "").lower()
+
+            def _pdice(p: dict) -> str:
+                return str(p.get("dice") or p.get("expr") or "")\
+                    .replace(" ", "").lower()
+
+            idx = next((i for i, p in enumerate(pend)
+                        if (p.get("by") or "").strip().lower() == by_low
+                        and _pdice(p) == expr_low), None)
+            if idx is None:
+                idx = next((i for i, p in enumerate(pend)
+                            if (p.get("by") or "").strip().lower() == by_low),
+                           None)
+            if idx is not None:
+                game_state["pending_rolls"] = (
+                    pend[:idx] + pend[idx + 1:])
         state_mod.save_state(game_state)
     return jsonify({"roll": result, "pretty": r.pretty()})
 
@@ -770,9 +842,15 @@ def api_new_game():
     """Nuova avventura: azzera storico, mappa e stato.
     I personaggi già creati vengono MANTENUTI (keep_characters, default True):
     si riparte direttamente con i PG esistenti senza rigenerarli."""
-    global game_state, conversation_history
+    global game_state, conversation_history, _msg_count
     body = request.get_json(silent=True) or {}
     keep_chars = body.get("keep_characters", True)
+    # auto_adventure=True: il frontend chiamerà SUBITO /api/generate_adventure
+    # (party pronto + DM collegato). In quel caso NIENTE briefing generico da
+    # qui: il contesto completo parte con la richiesta di generazione — un
+    # solo prompt grande invece di due, e nessuna corsa fra il briefing in
+    # background e il send della generazione.
+    auto_adventure = bool(body.get("auto_adventure"))
     with _state_lock:
         # CANCELLA la vecchia avventura PRIMA di azzerare lo stato: cattura
         # il path attivo (avventura generata con nome univoco oppure
@@ -814,19 +892,31 @@ def api_new_game():
                     state_mod.save_character_file(s)
         state_mod.save_state(game_state)
         state_mod.save_conversation(conversation_history)
+        # cadenza extra (musica/sprite ogni 3 messaggi): riparte da zero
+        _msg_count = 0
 
-    # Ri-allinea il DM alla partita nuova: senza un nuovo briefing
-    # resterebbe sul contesto della partita precedente (ora riceve solo
-    # i messaggi del giocatore). force=True: rimpiazza il briefing vecchio.
-    if webchat.is_open():
+    # Il DM va ri-allineato da zero: dimentica subito il briefing così
+    # qualunque invio successivo (generazione avventura compresa) include
+    # il contesto completo della partita NUOVA.
+    webchat.reset_briefing()
+
+    if webchat.is_open() and not auto_adventure:
+        # Conversazione NUOVA nella chat web + briefing della partita nuova:
+        # senza la nuova chat il modello erediterebbe trama/esiti della
+        # partita precedente rimasti nella conversazione corrente.
         briefing = _build_startup_briefing()
-        if briefing:
-            threading.Thread(
-                target=webchat.send_briefing,
-                args=(briefing,),
-                kwargs={"force": True},
-                daemon=True,
-            ).start()
+
+        def _fresh_chat_bg():
+            webchat.new_chat()
+            if briefing:
+                try:
+                    webchat.send_briefing(briefing, force=True)
+                except Exception as e:
+                    print(f"[NEW_GAME] briefing fallito: {e}", flush=True)
+
+        threading.Thread(target=_fresh_chat_bg, daemon=True).start()
+    # Con auto_adventure la conversazione nuova la apre direttamente
+    # /api/generate_adventure (in modo sincrono, niente race di ordine).
 
     return jsonify({"status": "ok", "state": game_state})
 
@@ -843,6 +933,14 @@ def api_generate_adventure():
     chars_list = (chars_data or {}).get("characters") if chars_data else None
     if not chars_list:
         return jsonify({"error": "Crea i personaggi prima di generare un'avventura."}), 400
+
+    # CONVERSAZIONE NUOVA prima di generare: la generazione lavora meglio
+    # senza il rumore della partita precedente e il flusso «Nuova partita»
+    # non deve ereditarne il contesto. Se la navigazione fallisce si
+    # prosegue comunque nella chat corrente (reset_briefing già fatto da
+    # /api/new_game fa ripassare il system prompt completo qui sotto).
+    if not webchat.is_briefed():
+        webchat.new_chat()
 
     # Richiesta di generazione: includi SYSTEM_PROMPT + PG se il DM non è
     # ancora briefato, altrimenti basta la richiesta (ha già il contesto).
@@ -1271,8 +1369,10 @@ def api_map_redraw():
         return jsonify({"error": f"Richiesta mappa fallita: {e}"}), 500
 
     cleaned = parser.clean_text(raw or "")
-    map_block = parser.extract_map(cleaned)
-    state_upd = parser.extract_state(cleaned)
+    map_block   = parser.extract_map(cleaned)
+    state_upd   = parser.extract_state(cleaned)
+    sprite_upds = parser.extract_sprites(cleaned)
+    legend_upds = parser.extract_legend(cleaned)
     if not map_block:
         # Il DM a volte risponde a parole senza il blocco mappa. Riprova UNA
         # volta con una richiesta secca prima di arrendersi.
@@ -1284,38 +1384,25 @@ def api_map_redraw():
                 "Nessun'altra parola."
             )
             cleaned = parser.clean_text(raw2 or "")
-            map_block = parser.extract_map(cleaned)
-            state_upd = parser.extract_state(cleaned) or state_upd
+            map_block   = parser.extract_map(cleaned)
+            state_upd   = parser.extract_state(cleaned) or state_upd
+            sprite_upds = parser.extract_sprites(cleaned) or sprite_upds
+            legend_upds = parser.extract_legend(cleaned) or legend_upds
         except Exception as e:
             print(f"[MAP] retry redraw fallito: {e}", flush=True)
     if not map_block:
         return jsonify({"error": "Il DM non ha emesso un blocco MAP valido"}), 502
 
     with _state_lock:
-        # Sostituzione totale della mappa (stessa pipeline di /api/chat)
-        bw, bh = state_mod.measure_map(map_block)
-        norm = state_mod.normalize_map(map_block, bw, bh)
-        at = state_mod.find_position(norm, "@")
-        norm_no_at = norm.replace("@", ".")
-        game_state["map_base"]   = norm_no_at
-        game_state["map_full"]   = norm_no_at
-        game_state["map_width"]  = bw
-        game_state["map_height"] = bh
-        if at:
-            game_state["current_position"] = [at[0], at[1]]
+        # GREZZO: disegna ESATTAMENTE la mappa del modello, senza
+        # normalizzazione né fog (stessa pipeline di /api/chat).
+        state_mod.set_raw_map(game_state, map_block)
+        if sprite_upds:
+            parser.apply_sprites(game_state, sprite_upds)
+        if legend_upds:
+            parser.apply_legend(game_state, legend_upds)
         if state_upd:
             parser.apply_state_update(game_state, state_upd)
-
-        # «Mappa completa»: rivela TUTTE le tile, azzera la fog.
-        revealed = []
-        for y, line in enumerate(norm_no_at.splitlines()):
-            for x, _ in enumerate(line):
-                revealed.append([x, y])
-        game_state["revealed_tiles"] = revealed
-
-        pos = game_state.get("current_position") or [0, 0]
-        game_state["map_ascii"] = state_mod.apply_fog(
-            game_state["map_full"], revealed, party_pos=pos)
         state_mod.save_state(game_state)
 
     return jsonify({
@@ -1414,6 +1501,12 @@ def api_chat():
     # retry=True: RICARICA l'ultimo turno del DM — scarta la sua ultima
     # risposta e la rigenera dall'ultimo messaggio del giocatore.
     retry = bool(body.get("retry"))
+    # cont=True: PROSECUZIONE AUTOMATICA — nessun messaggio del giocatore.
+    # Consegna al DM i tiri IA risolti ma non ancora narrati e/o le note di
+    # sistema in sospeso (es. rimasti parcheggiati dopo un briefing di
+    # ripresa) e fa avanzare i turni dei PG IA/mostri finché non tocca a un
+    # PG umano. Lo invoca il frontend da solo quando vede feedback in coda.
+    cont = bool(body.get("continue"))
     if retry:
         with _state_lock:
             while (conversation_history
@@ -1424,6 +1517,15 @@ def api_chat():
         if not last_user:
             return jsonify({"error": "Nessun messaggio del DM da ricaricare"}), 400
         user_message = (last_user.get("content") or "").strip()
+    elif cont:
+        with _state_lock:
+            has_followup = bool(game_state.get("pending_roll_feedback")
+                                or game_state.get("pending_dm_notes"))
+        if not has_followup:
+            # niente in coda (già consumato da un'altra richiesta): no-op
+            # silenzioso, il frontend non mostra nulla.
+            return jsonify({"status": "idle"})
+        user_message = ""
     else:
         user_message = (body.get("message") or "").strip()
         if not user_message:
@@ -1438,8 +1540,14 @@ def api_chat():
         # mostri / PG IA) prima di restituire il controllo ai giocatori.
         MAX_FOLLOWUPS = 6
 
-        # in retry l'ultimo messaggio del giocatore è già nello storico
-        if not retry:
+        # Guardie one-shot per QUESTO turno del giocatore: la nota
+        # anti-esiti-inventati parte al massimo una volta, così un DM
+        # recidivo non fa girare il follow-up loop fino al cap.
+        guard_flags = {"check_claim": False, "force_followup": False}
+
+        # in retry l'ultimo messaggio del giocatore è già nello storico;
+        # in continue NON c'è alcun messaggio del giocatore da registrare.
+        if not retry and not cont:
             with _state_lock:
                 conversation_history.append(
                     {"role": "user", "content": user_message})
@@ -1495,9 +1603,10 @@ def api_chat():
             `with_extras=True` appende anche la richiesta di rigenerare la
             colonna sonora e gli sprite pixel-art (cadenza ogni 3 messaggi
             del giocatore)."""
-            # promemoria appesi a OGNI messaggio: mappa sempre; musica e
-            # sprite ogni 3 messaggi.
-            reminders = prompt_mod.map_reminder(game_state)
+            # promemoria appesi a OGNI messaggio: stile (chiaro e conciso)
+            # e mappa sempre; musica e sprite ogni 3 messaggi.
+            reminders = prompt_mod.style_reminder()
+            reminders += "\n\n" + prompt_mod.map_reminder(game_state)
             if with_extras:
                 reminders += "\n\n" + prompt_mod.music_reminder()
                 reminders += "\n\n" + prompt_mod.sprite_reminder()
@@ -1562,13 +1671,8 @@ def api_chat():
             # Risolvi ROLL_REQ: i tiri dei PG UMANI restano in attesa (li
             # lancia il giocatore dal riquadro dadi); gli altri li tira il
             # sistema e finiscono in roll_results.
-            human_names = [
-                p.get("name")
-                for p in game_state.get("players", [])
-                if p.get("type") == "human"
-            ]
             with_rolls, roll_results, pending_rolls = parser.resolve_roll_requests(
-                cleaned, human_names
+                cleaned, _human_roll_names(), _default_human_roller()
             )
 
             state_upd   = parser.extract_state(with_rolls)
@@ -1576,6 +1680,7 @@ def api_chat():
             map_block   = parser.extract_map(with_rolls)
             music_upds  = parser.extract_music(with_rolls)
             sprite_upds = parser.extract_sprites(with_rolls)
+            legend_upds = parser.extract_legend(with_rolls)
             cast_upds   = parser.extract_spell_casts(with_rolls)
 
             map_report = None
@@ -1638,88 +1743,33 @@ def api_chat():
                 new_scene = (game_state.get("current_scene") or "").strip()
                 scene_changed = bool(new_scene) and new_scene != prev_scene
                 if map_block:
-                    # SOSTITUZIONE TOTALE: ogni mappa del DM rimpiazza
-                    # quella precedente, con le dimensioni esatte che il
-                    # DM ha disegnato. Niente skeleton immutabile: se la
-                    # scena cambia (nuova sezione, allargamento, mappa
-                    # più piccola) la mappa segue.
-                    bw, bh = state_mod.measure_map(map_block)
-                    norm = state_mod.normalize_map(map_block, bw, bh)
-                    at = state_mod.find_position(norm, "@")
-                    norm_no_at = norm.replace("@", ".")
-                    prev_w = game_state.get("map_width") or 0
-                    prev_h = game_state.get("map_height") or 0
-                    prev_full = game_state.get("map_full") or ""
-                    if (bw, bh) != (prev_w, prev_h) or norm_no_at != prev_full or scene_changed:
-                        # cambia dimensione, layout O scena → fog azzerata
-                        # (nuova scena: vecchie tile rivelate non valgono più)
-                        game_state["revealed_tiles"] = []
-                    game_state["map_base"]   = norm_no_at
-                    game_state["map_full"]   = norm_no_at
-                    game_state["map_width"]  = bw
-                    game_state["map_height"] = bh
-                    if at:
-                        # accetta sempre la posizione del @ disegnato dal DM
-                        game_state["current_position"] = [at[0], at[1]]
+                    # GREZZO: disegna ESATTAMENTE la mappa del modello.
+                    # Niente normalizzazione dei caratteri, niente fog,
+                    # niente controllo di coerenza posizione↔muri. La
+                    # legenda (sprite per ogni tile) la definisce il DM.
+                    state_mod.set_raw_map(game_state, map_block)
                 elif scene_changed:
-                    # Cambio scena dichiarato dal DM ma nessuna mappa
-                    # emessa: NON azzeriamo quella vecchia (lasciare il
-                    # pannello vuoto = "mappa non disegnata"). La teniamo a
-                    # video finché arriva la nuova e SOLLECITIAMO il redraw
-                    # al prossimo turno. Meglio una mappa un turno vecchia
-                    # che nessuna mappa.
-                    game_state.setdefault("pending_dm_notes", []).append(
-                        f"[Sistema] NUOVA SCENA «{new_scene}» — emetti "
-                        "SUBITO una MAPPA COMPLETAMENTE NUOVA "
-                        "(MAP_START…MAP_END) coerente con questa scena: "
-                        "nuove dimensioni adatte al luogo, nuovo layout "
-                        "di muri/decorazioni, tile coerenti "
-                        "coll'ambientazione, mostri/PNG/tesori della "
-                        "scena. NON riusare la mappa precedente."
-                    )
+                    # Cambio scena senza mappa: solleciti il DM a mandarla.
+                    _request_map_note(f"NUOVA SCENA «{new_scene}» senza mappa")
                     print(f"[SCENE] cambio «{prev_scene}» → «{new_scene}» "
-                          "senza mappa: mappa precedente mantenuta, redraw "
-                          "richiesto al prossimo turno", flush=True)
-                # Se NON arriva una mappa nuova vale la posizione aggiornata
-                # dallo STATE_UPDATE: apply_fog ridisegna il @ lì, quindi la
-                # mappa si aggiorna comunque a ogni messaggio.
-                pos = game_state.get("current_position") or [0, 0]
-                if game_state.get("map_full"):
-                    # Verifica coerenza pos↔mappa PRIMA della fog: se
-                    # current_position cade sopra un muro o non corrisponde
-                    # al marker @ disegnato dal DM, accetta la posizione
-                    # suggerita (il @ della mappa) — altrimenti l'icona party
-                    # finirebbe ridisegnata sopra un muro.
-                    map_report = state_mod.check_map_coherence(
-                        game_state["map_full"], pos)
-                    sug = map_report.get("suggested_position")
-                    if sug and list(sug) != list(pos):
-                        pos = [sug[0], sug[1]]
-                        game_state["current_position"] = pos
-                    if not map_report["ok"]:
-                        print(f"[MAP] incoerenze: {map_report['issues']}", flush=True)
-                # Illuminazione a torcia con LINE-OF-SIGHT: la stanza
-                # chiusa illuminata mostra TUTTO il suo interno (perimetro
-                # incluso) senza nebbia residua; un corridoio si rivela
-                # solo fin dove l'occhio arriva; gli spazi aperti restano
-                # limitati dal raggio della torcia.
-                if game_state.get("map_full"):
-                    state_mod.reveal_los(game_state, game_state["map_full"],
-                                         pos[0], pos[1], radius=10)
-                else:
-                    state_mod.reveal_around(game_state, pos[0], pos[1], radius=2)
-                if game_state.get("map_full"):
-                    game_state["map_ascii"] = state_mod.apply_fog(
-                        game_state["map_full"],
-                        game_state.get("revealed_tiles", []),
-                        party_pos=pos,
-                    )
+                          "senza mappa: mappa precedente mantenuta", flush=True)
+                elif (game_state.get("phase") in ("adventure", "combat")
+                        and not (game_state.get("map_full") or "").strip()):
+                    # In gioco ma nessuna mappa in stato e il DM non ne ha
+                    # emessa una: sollecito anche senza cambio scena. Il
+                    # follow-up loop consegna la nota SUBITO (use_notes),
+                    # quindi la mappa arriva nello stesso turno.
+                    _request_map_note("MAPPA MANCANTE (il riquadro mappa è vuoto)")
+                    print("[MAP] nessuna mappa in stato e nessuna nel "
+                          "messaggio → sollecito al DM", flush=True)
                 for r in roll_results:
                     state_mod.add_roll(game_state, r)
                 if music_upds:
                     parser.apply_music_update(game_state, music_upds)
                 if sprite_upds:
                     parser.apply_sprites(game_state, sprite_upds)
+                if legend_upds:
+                    parser.apply_legend(game_state, legend_upds)
                 # Persisti le schede su personaggi.json: XP, HP, livello e
                 # ogni modifica del DM restano allineati anche nelle schede
                 # personaggio (non solo nello stato di gioco).
@@ -1729,6 +1779,43 @@ def api_chat():
 
             display_text = parser.strip_narrative(with_rolls)
 
+            # ── GUARDIA ESITI SENZA TIRO ──────────────────────────────
+            # Il DM ha dichiarato l'esito di una prova (es. «Percezione
+            # CD 12 superata») ma in questa risposta non c'è ALCUN
+            # <ROLL_REQ> e il messaggio in ingresso non gli ha consegnato
+            # alcun risultato: quel dado non l'ha tirato nessuno. La
+            # frase viene TOLTA dalla chat e una nota di sistema gli
+            # impone di chiedere il tiro col tag — se il PG è umano
+            # finirà nel riquadro dadi del giocatore. Il follow-up loop
+            # consegna la nota subito (use_notes): la correzione arriva
+            # nello stesso turno.
+            if (not roll_results and not pending_rolls
+                    and not guard_flags["check_claim"]
+                    and game_state.get("phase") in ("adventure", "combat")
+                    and not _RE_INCOMING_ROLL.search(message_text or "")
+                    and parser.has_check_claim(display_text)):
+                guard_flags["check_claim"] = True
+                # la nota va consegnata SUBITO nel follow-up loop, anche
+                # se il testo del DM passa la parola a un PG umano: quel
+                # passaggio si basa su un esito appena annullato.
+                guard_flags["force_followup"] = True
+                display_text = parser.strip_check_claims(display_text)
+                with _state_lock:
+                    game_state.setdefault("pending_dm_notes", []).append(
+                        "[Sistema] Hai DICHIARATO l'esito di una prova "
+                        "(«CD superata/fallita») ma NESSUN dado è stato "
+                        "tirato: nessun <ROLL_REQ> nella tua risposta e "
+                        "nessun risultato ti è stato consegnato. L'esito "
+                        "è ANNULLATO e rimosso dalla chat. Chiedi ORA il "
+                        "tiro con <ROLL_REQ> (campo \"by\" = chi tira: "
+                        "se è un PG UMANO lancerà il giocatore dal "
+                        "riquadro dadi, altrimenti tira il sistema) e "
+                        "FERMATI in attesa del numero. Mai dichiarare un "
+                        "esito senza il risultato del tiro.")
+                    state_mod.save_state(game_state)
+                print("[GUARD] esito di prova senza tiro → frase rimossa "
+                      "+ nota al DM", flush=True)
+
             with _state_lock:
                 _debug["exchanges"].append({
                     "ts":      datetime.now().isoformat(timespec="seconds"),
@@ -1737,6 +1824,9 @@ def api_chat():
                     "shown":   display_text[:2000],
                     "rolls":   roll_results,
                     "map":     map_report,
+                    "map_extracted": bool(map_block),
+                    "map_dims": [game_state.get("map_width"), game_state.get("map_height")],
+                    "map_ascii": (game_state.get("map_ascii") or "")[:1200],
                     "sprites": sorted(sprite_upds.keys()),
                     "casts":   cast_report,
                 })
@@ -1761,7 +1851,7 @@ def api_chat():
                     # esauriti rilevati in un turno precedente)
                     start_notes = game_state.get("pending_dm_notes") or []
                     game_state["pending_dm_notes"] = []
-                first_msg = f"Giocatore: {user_message}"
+                first_msg = "" if cont else f"Giocatore: {user_message}"
                 if retry:
                     first_msg += (
                         "\n\n[Sistema: RIGENERA la tua ultima risposta — "
@@ -1776,7 +1866,13 @@ def api_chat():
                 # ── Avventura precaricata passo passo: consegna il
                 # prossimo beat al DM una volta per messaggio del giocatore
                 # (non sui retry: si rigiocherebbe la stessa scena).
-                if not retry:
+                # NB: il messaggio AUTOMATICO col risultato di un tiro
+                # ("[Nome lancia 1d20+5: risultato N]") NON è un'azione del
+                # giocatore: non deve consumare un beat, altrimenti ogni
+                # lancio di dado faceva saltare la trama di una scena.
+                is_roll_msg = bool(re.match(
+                    r"^\[[^\[\]]+ lancia [^\[\]]+risultato", user_message))
+                if not retry and not cont and not is_roll_msg:
                     with _state_lock:
                         beats = game_state.get("adventure_beats") or []
                         idx   = int(game_state.get("adventure_index") or 0)
@@ -1801,12 +1897,22 @@ def api_chat():
                         )
 
                 if prefix:
-                    first_msg = "\n\n".join(prefix) + "\n\n" + first_msg
+                    joined = "\n\n".join(prefix)
+                    first_msg = joined + ("\n\n" + first_msg if first_msg else "")
+                if not first_msg.strip():
+                    # continue richiesto ma coda svuotata nel frattempo:
+                    # sollecito generico di prosecuzione (il DM è comunque
+                    # fermo in attesa di qualcosa dal sistema).
+                    first_msg = (
+                        "[Sistema] Prosegui la scena: gestisci i turni dei "
+                        "PG IA e dei mostri (emetti i <ROLL_REQ> necessari, "
+                        "campo \"by\" = chi tira) finché non tocca a un PG "
+                        "UMANO. Aggiorna mappa e <STATE_UPDATE>.")
 
                 # cadenza extra (musica + sprite): ogni EXTRAS_EVERY
-                # messaggi del giocatore (il retry non conta).
+                # messaggi del giocatore (retry e continue non contano).
                 want_extras = False
-                if not retry:
+                if not retry and not cont:
                     with _state_lock:
                         _msg_count += 1
                         want_extras = (_msg_count % EXTRAS_EVERY == 0)
@@ -1834,7 +1940,13 @@ def api_chat():
                     if not ap:
                         return False
                     for p in game_state.get("players", []):
-                        if (p.get("name") or "").strip().lower() == ap:
+                        # confronta sia col nome del giocatore sia con quello
+                        # della scheda: il DM usa indifferentemente i due.
+                        names = {
+                            (p.get("name") or "").strip().lower(),
+                            ((p.get("sheet") or {}).get("name") or "").strip().lower(),
+                        } - {""}
+                        if ap in names:
                             return p.get("type") == "human"
                     return False
 
@@ -1851,40 +1963,73 @@ def api_chat():
                     low = text.lower()
                     if "cosa fai" not in low and "tocca a te" not in low:
                         return False
-                    human_names = [
-                        (p.get("name") or "").strip().lower()
-                        for p in game_state.get("players", [])
-                        if p.get("type") == "human"
-                    ]
-                    return any(n and n in low for n in human_names)
+                    return any(n.lower() in low for n in _human_roll_names())
 
                 steps = 0
+                nudges = 0
                 while steps < MAX_FOLLOWUPS:
                     with _state_lock:
                         notes = list(game_state.get("pending_dm_notes") or [])
                         active_human = _active_is_human()
-                    # PG umano di turno: STOP. Il DM ha già passato la
-                    # parola al giocatore — eventuali tiri IA non ancora
-                    # narrati restano in coda per il prossimo messaggio.
-                    if active_human:
-                        break
-                    # Safety net: il testo del DM passa esplicitamente la
-                    # parola a un umano (anche senza ROLL_REQ e senza
-                    # aggiornare active_player). Fermati comunque: il
-                    # giocatore deve poter rispondere prima di nuove bolle.
-                    if _text_passes_turn_to_human(display):
-                        print("[COMBAT] DM ha passato turno a umano via "
-                              "testo senza active_player → break loop",
-                              flush=True)
-                        break
+                        active_name = (game_state.get("active_player") or "").strip()
+                        in_combat = bool(game_state.get("combat_active"))
                     # Tiri umani pending: il giocatore deve lanciare prima
-                    # di proseguire. Doppia sicurezza oltre al need_roll_fb.
+                    # di proseguire. Stop SEMPRE, qualunque altra cosa ci sia.
                     if pending:
                         break
-                    need_roll_fb = bool(rolls and not pending)
-                    use_notes = bool(notes and not pending)
+                    need_roll_fb = bool(rolls)
+                    use_notes = bool(notes)
+                    nudge = None
                     if not need_roll_fb and not use_notes:
-                        break
+                        # Né tiri IA appena risolti né note di sistema. Se in
+                        # combat il turno è di un PG IA o di un mostro e il
+                        # DM si è fermato SENZA emettere ROLL_REQ (es.
+                        # «attendo l'esito del tiro» scritto a parole, senza
+                        # tag), la partita resterebbe congelata: sollecitalo
+                        # a gestire LUI i turni non-umani, max 2 volte per
+                        # messaggio (poi ci si arrende fino al prossimo
+                        # input del giocatore).
+                        if (in_combat and active_name and not active_human
+                                and not _text_passes_turn_to_human(display)
+                                and nudges < 2):
+                            nudges += 1
+                            nudge = (
+                                f"[Sistema] Il turno è di {active_name} "
+                                "(PG IA o mostro): gestiscilo TU adesso. "
+                                "Dichiara la sua azione, emetti subito i "
+                                "<ROLL_REQ> necessari (campo \"by\" = chi "
+                                "tira) e prosegui l'ordine di iniziativa UN "
+                                "turno alla volta finché non tocca a un PG "
+                                "UMANO. Aggiorna mappa e <STATE_UPDATE>.")
+                        else:
+                            break
+                    # PG umano di turno (o parola passata a un umano nel
+                    # testo): STOP, ma SOLO se non ci sono tiri IA appena
+                    # risolti da narrare. Se il DM ha emesso un ROLL_REQ per
+                    # un PG IA è APPESO al risultato («Attendo il tiro di
+                    # Mira…»): il feedback va consegnato ORA anche se
+                    # active_player è rimasto sull'umano del turno prima —
+                    # rimandarlo al prossimo messaggio congelava la partita
+                    # a ogni passo (iniziativa, attacchi dei PG IA, ecc.).
+                    # Nota della guardia esiti-senza-tiro appena accodata:
+                    # consegnala SUBITO anche se il testo passa la parola
+                    # a un PG umano — quel «cosa fai?» si basava su un
+                    # esito annullato e il DM deve prima chiedere il tiro.
+                    force_note = guard_flags.get("force_followup", False)
+                    if force_note:
+                        guard_flags["force_followup"] = False
+                    if not need_roll_fb and not nudge and not force_note:
+                        if active_human:
+                            break
+                        # Safety net: il testo del DM passa esplicitamente la
+                        # parola a un umano (anche senza ROLL_REQ e senza
+                        # aggiornare active_player). Fermati comunque: il
+                        # giocatore deve poter rispondere prima di nuove bolle.
+                        if _text_passes_turn_to_human(display):
+                            print("[COMBAT] DM ha passato turno a umano via "
+                                  "testo senza active_player → break loop",
+                                  flush=True)
+                            break
                     steps += 1
                     if use_notes:
                         with _state_lock:
@@ -1894,13 +2039,15 @@ def api_chat():
                         parts.extend(notes)
                     if need_roll_fb:
                         parts.append(_format_roll_feedback(rolls))
+                    if nudge:
+                        parts.append(nudge)
                     display, rolls, pending = _dm_exchange("\n\n".join(parts))
                     if display.strip():
                         result_q.put(("token", display))
 
                 # Tiri IA risolti ma non ancora narrati (si attende un tiro
-                # umano, turno umano attivo, o limite turni): consegnali col
-                # prossimo messaggio.
+                # umano o si è raggiunto il limite follow-up): consegnali
+                # col prossimo messaggio.
                 if rolls:
                     with _state_lock:
                         game_state.setdefault(
@@ -1943,7 +2090,8 @@ def api_chat():
                 # In retry l'ultimo messaggio user è quello ORIGINALE da
                 # rigenerare (non appeso in questo giro): NON va rimosso,
                 # altrimenti un retry fallito cancella la storia legittima.
-                if not sent_any and not retry:
+                # In continue non è stato appeso NESSUN messaggio user.
+                if not sent_any and not retry and not cont:
                     with _state_lock:
                         if conversation_history and conversation_history[-1]["role"] == "user":
                             conversation_history.pop()
@@ -1961,8 +2109,9 @@ def api_chat():
 
         if not sent_any:
             # vedi nota sopra: in retry il messaggio user è l'originale,
-            # non rimuoverlo se il DM non ha risposto.
-            if not retry:
+            # non rimuoverlo se il DM non ha risposto; in continue non è
+            # stato appeso nessun messaggio user.
+            if not retry and not cont:
                 with _state_lock:
                     if conversation_history and conversation_history[-1]["role"] == "user":
                         conversation_history.pop()
@@ -1999,11 +2148,15 @@ DEFAULT_TTS_VOICE = "it-IT-DiegoNeural"
 
 async def _edge_synth(text: str, voice: str, rate: str) -> bytes:
     """Sintetizza `text` con la voce Edge `voice`, ritorna MP3 in memoria."""
+    if edge_tts is None:
+        raise RuntimeError("edge-tts non disponibile")
     communicate = edge_tts.Communicate(text, voice, rate=rate)
     buf = io.BytesIO()
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
-            buf.write(chunk["data"])
+            data = chunk.get("data")
+            if data:
+                buf.write(data)
     return buf.getvalue()
 
 
@@ -2065,7 +2218,12 @@ def api_debug():
 
 @app.route("/api/conversation")
 def api_conversation():
-    return jsonify({"history": conversation_history})
+    # snapshot sotto lock: il briefing in background appende messaggi
+    # mentre il frontend polla (pollForOpeningScene) → serializzare la
+    # lista viva fuori dal lock rischia dati a metà.
+    with _state_lock:
+        payload = json.dumps({"history": conversation_history})
+    return Response(payload, mimetype="application/json")
 
 
 # ────────────────────────────────────────────────────────────────────────

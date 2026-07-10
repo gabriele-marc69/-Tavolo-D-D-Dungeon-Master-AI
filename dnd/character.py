@@ -12,7 +12,7 @@ from __future__ import annotations
 import random
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from .rules import (ability_mod, armor_class, initiative_mod, level_for_xp,
                     proficiency_bonus, spell_slots, xp_for_level)
@@ -21,6 +21,9 @@ from .spells import normalize_spell_list
 
 STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
 ABILITIES = ["FOR", "DES", "COS", "INT", "SAG", "CAR"]
+
+# RNG di default condiviso quando il chiamante non ne fornisce uno.
+_DEFAULT_RNG = random.Random()
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -622,7 +625,7 @@ def _assign_stats(class_name: str, species_hint: dict) -> dict:
 # ────────────────────────────────────────────────────────────────────────
 
 def _seed(rng: Optional[random.Random] = None) -> str:
-    rng = rng or random
+    rng = rng or _DEFAULT_RNG
     return datetime.now().strftime("%Y%m%d-%H%M%S-") + f"{rng.randint(0, 0xFFFF):04X}"
 
 
@@ -671,7 +674,7 @@ def generate_sheet(
     Genera una scheda completa per il personaggio.
     Lancia ValueError se specie/classe/background sono sconosciuti.
     """
-    rng = rng or random
+    rng = rng or _DEFAULT_RNG
     level = max(1, min(20, int(level)))
 
     if gender not in GENDERS:
@@ -1037,7 +1040,7 @@ def _aggregate_item_modifiers(items: list) -> dict:
     sono ignorate. Bonus stats vengono sommati al PUNTEGGIO (score), non
     al modificatore: il `mod` viene poi ricalcolato.
     """
-    out = {k: 0 for k in _ITEM_MOD_KEYS}
+    out: dict[str, Any] = {k: 0 for k in _ITEM_MOD_KEYS}
     out["stat"] = {ab: 0 for ab in _ITEM_SAVE_ABILITIES}
     out["save"] = {ab: 0 for ab in _ITEM_SAVE_ABILITIES}
     if not isinstance(items, list):
@@ -1252,7 +1255,7 @@ def apply_level_progression(sheet: dict) -> None:
     except (TypeError, ValueError):
         old_lv = 1
     new_lv = max(old_lv, level_for_xp(xp))
-    cls = sheet.get("class")
+    cls = sheet.get("class") or ""
     cls_data = CLASSES.get(cls, {})
     if new_lv > old_lv:
         hit_die = int(cls_data.get("hit_die", 8) or 8)
@@ -1377,7 +1380,7 @@ def upgrade_sheet(sheet: dict) -> dict:
     """
     if not isinstance(sheet, dict):
         return sheet
-    cls = sheet.get("class")
+    cls = sheet.get("class") or ""
     cls_data = CLASSES.get(cls, {})
     is_caster = bool(cls_data.get("spellcasting"))
     sheet["caster_type"] = (CASTER_TYPE.get(cls, "full")
@@ -1408,7 +1411,9 @@ def upgrade_sheet(sheet: dict) -> dict:
     _w = sheet.get("weapons") or []
     _needs_weapons = (not _w) or all(not isinstance(x, dict) or "damage_roll" not in x for x in _w)
     if _needs_weapons:
-        _stats = sheet.get("stats") if isinstance(sheet.get("stats"), dict) else {}
+        _stats = sheet.get("stats")
+        if not isinstance(_stats, dict):
+            _stats = {}
         try:
             _pb = int(sheet.get("proficiency_bonus") or proficiency_bonus(int(sheet.get("level", 1) or 1)))
         except (TypeError, ValueError):
@@ -1508,7 +1513,7 @@ def reset_combat_state(sheet: dict) -> dict:
     hp = sheet.setdefault("hp", {})
     if isinstance(hp, dict):
         try:
-            mx = int(hp.get("max"))
+            mx = int(hp.get("max") or 0)
         except (TypeError, ValueError):
             mx = None
         if mx is not None and mx > 0:

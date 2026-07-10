@@ -127,6 +127,8 @@ def empty_state() -> dict:
         "sprites":           {},     # sprite pixel-art 16×16 generate dal DM
                                     # (vecchie 10×10 ancora accettate: scaling
                                     # nearest-neighbor in fase di render)
+        "map_legend":        [],     # legenda della mappa: [{char, label}]
+                                    # emessa dal DM in LEGENDA_START…LEGENDA_END
     }
 
 
@@ -578,7 +580,7 @@ def reveal_los(state: dict, map_full: str, x: int, y: int,
                 revealed.append([tx, ty])
 
 
-def apply_fog(map_full: str, revealed_tiles: list, party_pos: tuple | list = None) -> str:
+def apply_fog(map_full: str, revealed_tiles: list, party_pos: tuple | list | None = None) -> str:
     """
     Produce versione fog-of-war della mappa: solo le tile rivelate sono
     visibili. Le altre diventano ' ' (spazio). I muri ai bordi del visibile
@@ -868,7 +870,7 @@ def compose_map(base: str, new_map: str) -> str:
     return "\n".join(out)
 
 
-MAP_MIN_SIDE = 6
+MAP_MIN_SIDE = 20
 MAP_MAX_SIDE = 40
 
 
@@ -882,6 +884,62 @@ def measure_map(ascii_map: str) -> tuple[int, int]:
     h = min(MAP_MAX_SIDE, max(MAP_MIN_SIDE, len(rows)))
     w = min(MAP_MAX_SIDE, max(MAP_MIN_SIDE,
                               max(len(r.rstrip()) for r in rows)))
+    return (w, h)
+
+
+def _regularize_width(rows: list[str]) -> list[str]:
+    """Rende tutte le righe della STESSA larghezza, così la griglia è un
+    rettangolo perfetto anche quando il modello sbaglia a contare i
+    caratteri (off-by-one: una riga 21 fra righe da 20).
+
+    Larghezza obiettivo = la più FREQUENTE fra le righe non vuote (quella
+    che il modello "intendeva"). Righe più corte: si allungano replicando
+    l'ultimo carattere (di norma il bordo '#', così il muro resta chiuso);
+    righe più lunghe: si troncano mantenendo l'ULTIMO carattere (il bordo
+    destro non si perde). Le righe vuote vengono scartate."""
+    body = [r for r in rows if r.strip()]
+    if not body:
+        return body
+    from collections import Counter
+    target = Counter(len(r) for r in body).most_common(1)[0][0]
+    out: list[str] = []
+    for r in body:
+        if len(r) == target:
+            out.append(r)
+        elif len(r) < target:
+            pad = (r[-1] if r else "#")
+            out.append(r + pad * (target - len(r)))
+        else:  # troppo lunga: tieni inizio + ultimo carattere (bordo)
+            out.append(r[:target - 1] + r[-1])
+    return out
+
+
+def set_raw_map(state: dict, map_block: str) -> tuple[int, int]:
+    """Imposta la mappa nello stato come l'ha disegnata il modello, con
+    l'UNICA correzione di regolarizzare la larghezza delle righe (vedi
+    _regularize_width): niente normalizzazione dei caratteri, niente
+    fog-of-war, niente controllo di coerenza posizione↔muri.
+
+    `map_ascii` (la vista mostrata) = `map_full` = blocco del DM con le
+    righe portate tutte alla stessa larghezza. Il marker @ resta dentro il
+    blocco, così il frontend disegna il party e l'illuminazione sulla cella
+    dove l'ha messo il modello. Aggiorna `current_position` con le
+    coordinate di @ se presente.
+
+    Restituisce (larghezza, altezza) effettive del blocco regolarizzato."""
+    rows = _regularize_width((map_block or "").rstrip("\n").splitlines())
+    raw = "\n".join(rows)
+    h = len(rows)
+    w = max((len(r) for r in rows), default=0)
+    state["map_base"]       = raw
+    state["map_full"]       = raw
+    state["map_ascii"]      = raw
+    state["map_width"]      = w
+    state["map_height"]     = h
+    state["revealed_tiles"] = []     # niente fog: tutto sempre visibile
+    at = find_position(raw, "@")
+    if at:
+        state["current_position"] = [at[0], at[1]]
     return (w, h)
 
 

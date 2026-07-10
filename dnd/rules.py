@@ -20,6 +20,9 @@ from typing import List, Optional
 # dadi "NdM" e modificatori piatti. Es: "2d6+3", "1d20-1", "1d20+4+1d4".
 _DICE_TERM_RE = re.compile(r"([+-]?)(\d*)d(\d+)|([+-]?)(\d+)", re.IGNORECASE)
 
+# RNG di default condiviso quando il chiamante non ne fornisce uno.
+_DEFAULT_RNG = random.Random()
+
 
 @dataclass
 class RollResult:
@@ -71,7 +74,7 @@ def roll(expr: str, *, advantage: bool = False, disadvantage: bool = False,
     if advantage and disadvantage:
         advantage = disadvantage = False
 
-    rng = rng or random
+    rng = rng or _DEFAULT_RNG
     expr_s = expr.strip()
     compact = expr_s.replace(" ", "")
     if not compact:
@@ -245,7 +248,7 @@ def apply_damage(hp_current: int, hp_max: int, damage: int,
 
 def death_save(ds: DeathSaves, rng: Optional[random.Random] = None) -> tuple[RollResult, DeathSaves]:
     """Tiro salvezza contro morte (d20, ≥10 successo, 1 = 2 fallimenti, 20 = stabile +1HP)."""
-    rng = rng or random
+    rng = rng or _DEFAULT_RNG
     r = roll("1d20", reason="TS morte", rng=rng)
     nat = r.rolls[0]
     if nat == 20:

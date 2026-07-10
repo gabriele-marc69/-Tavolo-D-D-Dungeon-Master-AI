@@ -31,16 +31,38 @@ RE_ROLL_REQ  = re.compile(r"<ROLL_REQ>([\s\S]*?)</ROLL_REQ>")
 # seguono (MAP, STATE_UPDATE, CHAR_UPDATE) restano comunque processati.
 HALT_HUMAN_ROLL = "<<HALT_HUMAN_ROLL>>"
 RE_HALT_HUMAN_ROLL = re.compile(re.escape(HALT_HUMAN_ROLL))
+# Riga-risultato di un tiro risolto dal SISTEMA (_format_roll_inline:
+# «🎲 1d20+4 = **17** …»). Il DM ha il divieto assoluto di scrivere 🎲,
+# quindi una riga col dado è sempre roba nostra: quando il taglio su
+# HALT_HUMAN_ROLL rimuove la narrazione successiva al tiro umano, queste
+# righe (tiri dei PG IA/mostri già eseguiti) vanno CONSERVATE in chat.
+RE_SYSTEM_ROLL_LINE = re.compile(r"^\s*\**\s*🎲")
 RE_MUSIC     = re.compile(r"<MUSIC>([\s\S]*?)</MUSIC>")
 RE_SPRITE    = re.compile(r"<SPRITE>([\s\S]*?)</SPRITE>")
 RE_SCENE     = re.compile(r"<SCENE>([\s\S]*?)</SCENE>")
 RE_SPELL_CAST = re.compile(r"<SPELL_CAST>([\s\S]*?)</SPELL_CAST>")
+# Marker XML minuscoli che delimitano sezioni e chiamate nel PROMPT inviato
+# al DM (vedi dm/prompt.py: <identita>, <sistema_mappa>, <richiesta_*>, …).
+# Il DM non deve mai riprodurli; se li fa eco per errore vanno tolti dalla
+# narrazione visibile in chat.
+RE_PROMPT_MARKER = re.compile(
+    r"</?(?:identita|narrazione_giocatori|regole_fondamentali|tiro_dadi"
+    r"|attacchi_due_tiri|flusso_di_gioco|fase_[a-z0-9_]+"
+    r"|interruzione_pg_umano|riferimento_combattimento|mappa_aggiornata"
+    r"|pixel_art|sprite_personalizzati|tag_di_stato|riposo_e_fine_sessione"
+    r"|aggiornamento_schede|equipaggiamento|incantesimi_slot|colonna_sonora"
+    r"|progressione|morte|regole_personaggi_precaricati"
+    r"|regole_avventura_precaricata|lunghezza_e_ritmo|formato_risposta"
+    r"|stato_corrente|storico_partita|istruzione_ripresa"
+    r"|sistema_[a-z0-9_]+|richiesta_[a-z0-9_]+)>")
 # Decorazioni che i modelli mettono attorno ai marcatori: parentesi quadre
-# ([MAP_START]), grassetto (**MAP_START**), backtick, cancelletti, due punti
-# finali (MAP_START:). Le tolleriamo così il blocco viene riconosciuto lo
-# stesso. _MK_L = a sinistra del marcatore, _MK_R = a destra.
-_MK_L = r"[ \t]*[\[\*`#_~>\-]*[ \t]*"
-_MK_R = r"[ \t]*[\]\*`:_~\-]*[ \t]*"
+# ([MAP_START]), angolari (<MAP_START>), grassetto (**MAP_START**), backtick,
+# cancelletti, due punti finali (MAP_START:). Le tolleriamo così il blocco
+# viene riconosciuto anche se il modello mette i < > solo da un lato (es.
+# <MAP_START> ma MAP_END nudo). _MK_L = a sinistra del marcatore, _MK_R = a
+# destra.
+_MK_L = r"[ \t]*[\[\<\*`#_~>\-]*[ \t]*"
+_MK_R = r"[ \t]*[\]\>\<\*`:_~\-]*[ \t]*"
 RE_MAP       = re.compile(
     _MK_L + r"MAP_START" + _MK_R + r"\n([\s\S]*?)\n" + _MK_L + r"MAP_END" + _MK_R)
 RE_MAP_BLOCK = re.compile(
@@ -50,6 +72,31 @@ RE_MAP_BLOCK = re.compile(
 # rimossa dalla narrazione visibile.
 RE_MAP_TAG   = re.compile(r"<MAP>\s*([\s\S]*?)\s*</MAP>", re.IGNORECASE)
 RE_MAP_TAG_BLOCK = re.compile(r"<MAP>[\s\S]*?</MAP>\s*", re.IGNORECASE)
+# Cattura permissiva del CONTENUTO fra i marcatori, senza pretendere a-capo:
+# serve a recuperare il blocco COLLASSATO su una riga sola (il rendering
+# markdown della chat fonde le righe di un paragrafo non recintato e
+# l'innerText arriva come "MAP_START #### #..@ ... MAP_END").
+RE_MAP_INLINE = re.compile(
+    _MK_L + r"MAP_START" + _MK_R + r"\s*([\s\S]*?)\s*" + _MK_L + r"MAP_END" + _MK_R,
+    re.IGNORECASE)
+# Sezioni LEGENDA_START…LEGENDA_END e SPRITE_START…SPRITE_END: il DM le
+# emette PRIMA di MAP_START…MAP_END (nuovo formato a tre blocchi). La
+# legenda mappa carattere→nome; lo SPRITE i disegni 16×16. Tolleriamo le
+# stesse decorazioni dei marcatori MAP (_MK_L/_MK_R).
+RE_LEGEND       = re.compile(
+    _MK_L + r"LEGENDA_START" + _MK_R + r"\n?([\s\S]*?)\n?" + _MK_L + r"LEGENDA_END" + _MK_R,
+    re.IGNORECASE)
+RE_LEGEND_BLOCK = re.compile(
+    _MK_L + r"LEGENDA_START" + r"[\s\S]*?" + r"LEGENDA_END" + _MK_R, re.IGNORECASE)
+RE_SPRITE_SEC       = re.compile(
+    _MK_L + r"SPRITE_START" + _MK_R + r"\n?([\s\S]*?)\n?" + _MK_L + r"SPRITE_END" + _MK_R,
+    re.IGNORECASE)
+RE_SPRITE_SEC_BLOCK = re.compile(
+    _MK_L + r"SPRITE_START" + r"[\s\S]*?" + r"SPRITE_END" + _MK_R, re.IGNORECASE)
+# Oggetto sprite "nudo" dentro la sezione SPRITE_START…SPRITE_END: il DM può
+# elencare i {…} senza racchiuderli in <SPRITE>. Gli sprite non hanno graffe
+# annidate (rows è un array), quindi un match non-greedy di {…} basta.
+RE_SPRITE_OBJ   = re.compile(r"\{[^{}]*\}")
 # Etichette delle barre dei code-block delle chat web (pulsanti Copia/
 # Scarica/Copy/Download/text che l'estrazione innerText cattura come righe).
 RE_CODE_TOOLBAR = re.compile(
@@ -139,6 +186,40 @@ RE_LEAK_LINE = re.compile(
 #   1) parentetica:  (7/9 HP)  [HP 12]  (PF 5/8)
 #   2) etichettata:  HP: 7/9   PF 12/15
 #   3) "rimasti":    7 HP rimasti / gli restano 5 PF
+# Frasi-filler di ATTESA del DM («(Attendo il tiro per colpire di Mira)»,
+# «Attendo il risultato del sistema.», «In attesa dei tiri di iniziativa…»):
+# il sistema risolve i tiri da solo e risponde subito — in chat queste
+# righe confondono e basta. Per non toccare la prosa legittima
+# («dall'aspetto orribile», «attende il suo destino») servono ENTRAMBE:
+# una parola di attesa (attendo/in attesa/aspetto…) E una parola di
+# contesto-tiro (tiro/risultato/sistema/dado/esito/iniziativa).
+_WAIT_WORD = r"(?:attend\w+|attes[ao]|in\s+attesa|aspett\w+)"
+_WAIT_CTX  = r"(?:tir[oi]|risultat[oi]|sistema|lanci\w*|dad[oi]|esit[oi]|iniziativa)"
+RE_WAIT_PAREN = re.compile(
+    r"(?i)[\(\[]"
+    r"(?=[^()\[\]\n]*\b" + _WAIT_WORD + r")"
+    r"(?=[^()\[\]\n]*\b" + _WAIT_CTX + r")"
+    r"[^()\[\]\n]*[\)\]]")
+RE_WAIT_LINE = re.compile(
+    r"(?im)^[ \t]*[\*_~`]*" + _WAIT_WORD + r"\b"
+    r"[^\n]*\b" + _WAIT_CTX + r"[^\n]*$")
+
+# Esito di prova DICHIARATO dal DM (es. «Percezione CD 12 superata»,
+# «supera la CD 14», «prova fallita»): legittimo SOLO dopo che un numero
+# gli è stato consegnato (tiro del giocatore o del sistema). La guardia in
+# app.py usa questi pattern per scoprire gli esiti inventati — risposta
+# senza alcun <ROLL_REQ> e nessun risultato in ingresso — e li CANCELLA
+# dalla chat, imponendo al DM di chiedere il tiro col tag.
+_CHECK_OUTCOME = r"(?:superat\w+|fallit\w+|riuscit\w+|mancat\w+)"
+RE_CHECK_CLAIM = re.compile(
+    r"(?i)(?:"
+    r"\bCD\s*\d+[^\n.!?]{0,24}?\b" + _CHECK_OUTCOME +          # CD 12 superata
+    r"|\b(?:supera\w*|fallisc\w*|fallit\w*|batt\w*|raggiung\w*)"
+    r"\s+(?:la\s+|una\s+)?CD\s*\d+" +                          # supera la CD 12
+    r"|\b(?:prova|tiro|ts)\b[^\n.!?]{0,40}?\b" + _CHECK_OUTCOME +  # prova … superata
+    r")"
+)
+
 _HP_WORD = r"(?:hp|pf|punti\s+ferita)"
 RE_HP_READOUT = re.compile(
     r"(?i)"
@@ -317,18 +398,34 @@ def strip_narrative(text: str) -> str:
     out = RE_SPRITE.sub("", out)
     out = RE_SCENE.sub("", out)
     out = RE_SPELL_CAST.sub("", out)
+    # marker di sezione del prompt eventualmente fatti eco dal DM
+    out = RE_PROMPT_MARKER.sub("", out)
+    # blocchi a tre sezioni (nuovo formato mappa): LEGENDA / SPRITE / MAP.
+    # Vanno SOLO nel riquadro mappa, mai nel testo chat al centro.
+    out = RE_LEGEND_BLOCK.sub("", out)
+    out = RE_SPRITE_SEC_BLOCK.sub("", out)
     out = RE_MAP_BLOCK.sub("", out)
     out = RE_MAP_TAG_BLOCK.sub("", out)
     # mappa ASCII NUDA (senza marcatori) o dentro un code-fence: toglila dal
     # testo chat (va solo nel riquadro mappa, dove la rende extract_map).
     out = _strip_bare_grid(out)
+    # recinti ``` rimasti VUOTI dopo aver tolto la mappa al loro interno
+    # (es. ```text\n\n``` ) → via, altrimenti restano nel testo chat.
+    out = re.sub(r"```[ \t]*[a-zA-Z0-9]*[ \t]*\n?\s*```", "", out)
     out = RE_AI_FOOTER.sub("", out)
     # PAUSA SU TIRO UMANO: se è presente il sentinel HALT_HUMAN_ROLL, taglia
     # qui la narrazione (qualunque cosa il DM abbia scritto dopo il tiro
     # umano è un esito anticipato — il giocatore deve ancora tirare).
+    # ECCEZIONE: le righe 🎲 dopo il sentinel sono tiri di PG IA/mostri GIÀ
+    # risolti dal sistema (es. iniziative chieste dopo quella dell'umano):
+    # non sono speculazione del DM e restano visibili in chat.
     halt = RE_HALT_HUMAN_ROLL.search(out)
     if halt:
+        kept_rolls = [ln.strip() for ln in out[halt.end():].splitlines()
+                      if RE_SYSTEM_ROLL_LINE.match(ln)]
         out = out[:halt.start()].rstrip()
+        if kept_rolls:
+            out += ("\n\n" if out else "") + "\n".join(kept_rolls)
     out = RE_HALT_HUMAN_ROLL.sub("", out)
     # applica più volte: sezioni adiacenti possono lasciare residui che
     # diventano stop-anchor per altre sezioni al passaggio successivo
@@ -342,6 +439,11 @@ def strip_narrative(text: str) -> str:
     # readout numerici di HP nella prosa (nascondono gli HP dei nemici;
     # quelli del party sono già nel pannello schede)
     out = RE_HP_READOUT.sub("", out)
+    # frasi di attesa del DM («(Attendo il tiro di Mira)», «Attendo il
+    # risultato del sistema.»): il sistema risolve e risponde da solo,
+    # in chat non devono comparire.
+    out = RE_WAIT_PAREN.sub("", out)
+    out = RE_WAIT_LINE.sub("", out)
     # parentesi/spazi rimasti vuoti dopo il taglio dei readout HP
     out = re.sub(r"[ \t]*[\(\[]\s*[\)\]]", "", out)
     out = re.sub(r"[ \t]{2,}", " ", out)
@@ -353,6 +455,31 @@ def strip_narrative(text: str) -> str:
     # ripetendo solo l'ultima frase). Qui i tag sono già stati tolti →
     # dedup profonda (blocco + frase) sul testo di pura narrazione.
     out = _dedup_response(out, deep=True)
+    return out.strip()
+
+
+def has_check_claim(text: str) -> bool:
+    """True se il testo dichiara l'esito di una prova/tiro («CD 12
+    superata», «prova fallita», …). Da usare SOLO assieme al contesto
+    (vedi guardia in app.py): l'esito è legittimo quando un risultato è
+    stato davvero consegnato al DM."""
+    return bool(RE_CHECK_CLAIM.search(text or ""))
+
+
+def strip_check_claims(text: str) -> str:
+    """Rimuove le FRASI che dichiarano l'esito di una prova/tiro. Usato
+    SOLO quando la guardia rileva un esito inventato (nessun dado tirato):
+    la frase non deve restare in chat, il tiro verrà richiesto col tag."""
+    if not text:
+        return text
+    out_lines: list[str] = []
+    for line in text.split("\n"):
+        sents = re.split(r"(?<=[.!?…])\s+", line)
+        kept = [s for s in sents if not RE_CHECK_CLAIM.search(s)]
+        out_lines.append(" ".join(kept))
+    out = "\n".join(out_lines)
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\n{3,}", "\n\n", out)
     return out.strip()
 
 
@@ -435,21 +562,131 @@ def extract_chars(text: str) -> list[dict]:
     return out
 
 
+def _last_match(rx: "re.Pattern", text: str) -> "re.Match | None":
+    """Ultimo match di `rx` in `text` (re non offre rsearch). Serve perché
+    quando il DM emette PIÙ blocchi mappa nella stessa risposta — tipico
+    dopo la richiesta di una nuova mappa: ridisegna la vecchia e poi mette
+    quella aggiornata — conta SOLO l'ultima generata. `.search()` prende il
+    primo match e mostrerebbe la mappa vecchia."""
+    m = None
+    for m in rx.finditer(text):
+        pass
+    return m
+
+
 def extract_map(text: str) -> str | None:
     """Estrae la mappa ASCII da MAP_START…MAP_END (forma canonica) o dal
     tag <MAP>…</MAP> (forma alternativa che alcuni modelli emettono).
     Restituisce il blocco interno, già normalizzato dei caratteri non
     canonici (vedi _normalize_map_chars).
 
+    Se il testo contiene PIÙ blocchi mappa, considera solo l'ULTIMO: dopo
+    una richiesta di nuova mappa il DM tende a ridisegnare la precedente
+    prima di quella aggiornata, e va mostrata quella aggiornata.
+
     FALLBACK: se mancano del tutto i marcatori (alcuni modelli — DeepSeek
     in primis — disegnano la griglia ASCII NUDA, magari dentro un blocco
     ``` ``` ```), prova a riconoscere comunque una griglia di mappa
     (vedi _extract_bare_grid). Così la mappa appare anche quando il DM
     ignora la richiesta di racchiuderla nei marcatori."""
-    m = RE_MAP.search(text) or RE_MAP_TAG.search(text)
+    # ULTIMA mappa generata: fra forma canonica e tag <MAP>, prendi il match
+    # con posizione più avanzata nel testo (non la prima né per-forma).
+    m_canon = _last_match(RE_MAP, text)
+    m_tag   = _last_match(RE_MAP_TAG, text)
+    m = max((x for x in (m_canon, m_tag) if x),
+            key=lambda x: x.start(), default=None)
     if m:
-        return _normalize_map_chars(m.group(1).rstrip())
-    return _extract_bare_grid(text)
+        # 1) RIPULISCI il rumore che le chat web infilano nel blocco:
+        #    recinti ```), barre toolbar (Copia/Download), numeri di riga e
+        #    marcatori di lista a inizio riga. Questo è ciò che faceva
+        #    arrivare al renderer una griglia sballata (= mappa "rotta").
+        # 2) NORMALIZZA i caratteri al set canonico: i modelli disegnano
+        #    spesso muri/bordi con box-drawing (│ ─ ┌) o lettere (W/H/B) e
+        #    numerano i tile (S1, M2). Questi caratteri NON hanno sprite e
+        #    il renderer li mostrerebbe come PAVIMENTO, bucando muri e
+        #    geometria (mappa incoerente). _normalize_map_chars li riporta
+        #    ai tile pixel-art noti (box-drawing→muro, cifre→pavimento,
+        #    alias→tile equivalente). Gli sprite personalizzati del DM usano
+        #    id canonici, quindi restano intatti.
+        cleaned = _normalize_map_chars(_clean_map_block(m.group(1)))
+        if cleaned.strip():
+            return cleaned
+    bare = _extract_bare_grid(text)
+    if bare:
+        return _normalize_map_chars(bare)
+    # ULTIMA SPIAGGIA: blocco COLLASSATO — i marcatori ci sono ma il
+    # contenuto è arrivato senza a-capo (markdown non recintato: il
+    # renderer fonde le righe del paragrafo in spazi). Le righe di griglia
+    # non contengono spazi, quindi i token separati da whitespace SONO le
+    # righe: se ne escono abbastanza di larghezza simile, ricostruiamo.
+    # Senza questo recupero il blocco viene comunque TOLTO dalla chat
+    # (RE_MAP_BLOCK non richiede a-capo) ma il riquadro resta sulla mappa
+    # vecchia: fallimento invisibile.
+    m = _last_match(RE_MAP_INLINE, text)
+    if m:
+        rebuilt = _rebuild_collapsed_grid(m.group(1))
+        return _normalize_map_chars(rebuilt) if rebuilt else None
+    return None
+
+
+def _rebuild_collapsed_grid(inner: str) -> str | None:
+    """Ricostruisce la griglia da un blocco mappa collassato su una riga.
+    `inner` è il testo fra MAP_START e MAP_END: i token separati da
+    whitespace sono candidati-riga. Accetta solo se quasi tutti i token
+    sembrano righe di mappa (≥5, larghezze simili): mai inventare una
+    mappa da prosa."""
+    toks = [t for t in re.split(r"\s+", (inner or "").strip()) if t]
+    rows = [t for t in toks if _looks_like_map_row(t)]
+    if len(rows) < 5 or not toks or len(rows) < len(toks) * 0.8:
+        return None
+    widths = [len(r) for r in rows]
+    if max(widths) - min(widths) > max(widths) * 0.5:
+        return None
+    return "\n".join(rows)
+
+
+# ── Pulizia righe di mappa ────────────────────────────────────────────
+# Le chat web (DeepSeek/Claude/…) restituiscono il blocco mappa con
+# decorazioni che ROMPONO la griglia: recinti ```, etichette toolbar dei
+# code-block, numerazione di riga ("1  ####", "12| ####"), marcatori di
+# lista/citazione ("- ####", "> ####"). Tolti questi, restano i tile.
+_RE_MAP_FENCE   = re.compile(r"^\s*```")
+_RE_MAP_TOOLBAR = re.compile(
+    r"(?i)^\s*(?:copia|copy|scarica|download|text|json|markdown|plaintext)\s*$")
+# numero di riga: "12| ", "2: ", "3. ", oppure "1 " (numero + ≥1 spazio).
+# I tile della mappa non sono cifre nude, quindi un numero a inizio riga
+# seguito da separatore o spazio è quasi sempre una numerazione di riga.
+_RE_MAP_LINENO  = re.compile(r"^\s*\d{1,3}(?:\s*[|:.\)]\s*|[ \t]+)")
+# marcatore di lista/citazione a inizio riga
+_RE_MAP_ROWMARK = re.compile(r"^\s*[>*•·]\s+|^\s*-\s+")
+
+
+def _clean_map_line(line: str) -> str:
+    """Toglie da UNA riga di mappa i prefissi-rumore (lista/citazione,
+    numero di riga). Conserva i caratteri-tile così come sono."""
+    s = line.rstrip("\n")
+    s = _RE_MAP_ROWMARK.sub("", s)
+    s = _RE_MAP_LINENO.sub("", s)
+    return s
+
+
+def _clean_map_block(block: str) -> str:
+    """Ripulisce un blocco mappa: scarta righe di recinto ``` e toolbar,
+    toglie numeri di riga e marcatori di lista, elimina le righe vuote in
+    testa e in coda. Restituisce i tile GREZZI (nessuna normalizzazione
+    dei caratteri: ogni tile lo disegna lo sprite del modello)."""
+    out: list[str] = []
+    for ln in (block or "").splitlines():
+        if _RE_MAP_FENCE.match(ln):
+            continue
+        if _RE_MAP_TOOLBAR.match(ln):
+            continue
+        out.append(_clean_map_line(ln))
+    while out and not out[0].strip():
+        out.pop(0)
+    while out and not out[-1].strip():
+        out.pop()
+    return "\n".join(out)
 
 
 def _looks_like_map_row(line: str) -> bool:
@@ -466,13 +703,24 @@ def _looks_like_map_row(line: str) -> bool:
     return any(ch in "#." for ch in s)
 
 
-def _find_bare_grid_span(lines: list[str]) -> tuple[int, int] | None:
-    """Indici [start, end) del più lungo blocco contiguo di righe "da mappa"
-    in `lines`, se qualifica come mappa nuda (≥5 righe, larghezze simili,
-    abbastanza muri). None altrimenti. Condiviso da estrazione e rimozione
-    così le due restano sempre coerenti."""
-    best = (0, 0)
-    best_len = 0
+def _bare_grid_span_qualifies(lines: list[str], start: int, end: int) -> bool:
+    """Lo span [start,end) di righe contigue "da mappa" qualifica come mappa
+    nuda: ≥3 righe, larghezze simili, almeno ~1 muro per riga in media."""
+    if end - start < 3:        # accetta anche stanze piccole (3+ righe)
+        return False
+    rows = [lines[k].rstrip() for k in range(start, end)]
+    widths = [len(r) for r in rows]
+    if max(widths) - min(widths) > max(widths) * 0.5:
+        return False           # troppo irregolare: probabile non-mappa
+    joined = "".join(rows)
+    walls = sum(1 for ch in joined if ch == "#" or ch in _MAP_ALIASES)
+    return walls >= len(rows)
+
+
+def _bare_grid_spans(lines: list[str]) -> list[tuple[int, int]]:
+    """Tutti gli span [start,end) contigui che qualificano come mappa nuda,
+    in ordine di apparizione nel testo."""
+    spans: list[tuple[int, int]] = []
     cur_start: int | None = None
     for i, ln in enumerate(lines):
         if _looks_like_map_row(ln):
@@ -480,22 +728,21 @@ def _find_bare_grid_span(lines: list[str]) -> tuple[int, int] | None:
                 cur_start = i
         else:
             if cur_start is not None:
-                if i - cur_start > best_len:
-                    best, best_len = (cur_start, i), i - cur_start
+                if _bare_grid_span_qualifies(lines, cur_start, i):
+                    spans.append((cur_start, i))
                 cur_start = None
-    if cur_start is not None and len(lines) - cur_start > best_len:
-        best, best_len = (cur_start, len(lines)), len(lines) - cur_start
-    if best_len < 5:
-        return None
-    rows = [lines[k].rstrip() for k in range(best[0], best[1])]
-    widths = [len(r) for r in rows]
-    if max(widths) - min(widths) > max(widths) * 0.5:
-        return None        # troppo irregolare: probabile non-mappa
-    joined = "".join(rows)
-    walls = sum(1 for ch in joined if ch == "#" or ch in _MAP_ALIASES)
-    if walls < len(rows):  # almeno ~1 muro per riga in media
-        return None
-    return best
+    if cur_start is not None and _bare_grid_span_qualifies(lines, cur_start, len(lines)):
+        spans.append((cur_start, len(lines)))
+    return spans
+
+
+def _find_bare_grid_span(lines: list[str]) -> tuple[int, int] | None:
+    """Indici [start, end) dell'ULTIMA mappa nuda qualificante in `lines`
+    (None se nessuna). 'Ultima' e non 'più lunga': se il DM disegna più
+    griglie nude — la vecchia poi quella aggiornata — conta solo l'ultima
+    generata. Condiviso da estrazione e rimozione così restano coerenti."""
+    spans = _bare_grid_spans(lines)
+    return spans[-1] if spans else None
 
 
 def _extract_bare_grid(text: str) -> str | None:
@@ -504,12 +751,18 @@ def _extract_bare_grid(text: str) -> str | None:
     normalizzata, o None se non c'è un blocco abbastanza simile a una mappa."""
     if not text:
         return None
-    lines = text.replace("```", "").splitlines()
+    # Pulisci PRIMA le righe (numeri di riga, marcatori di lista, toolbar):
+    # così una griglia "sporca" dentro un fence viene comunque riconosciuta.
+    lines = [_clean_map_line(ln)
+             for ln in text.replace("```", "").splitlines()
+             if not _RE_MAP_TOOLBAR.match(ln)]
     span = _find_bare_grid_span(lines)
     if not span:
         return None
     rows = [lines[k].rstrip() for k in range(span[0], span[1])]
-    return _normalize_map_chars("\n".join(rows))
+    # GREZZO: niente normalizzazione — disegniamo i caratteri del modello
+    # così come sono (la sprite per ogni tile la definisce il DM).
+    return "\n".join(rows)
 
 
 def _strip_bare_grid(text: str) -> str:
@@ -523,12 +776,14 @@ def _strip_bare_grid(text: str) -> str:
         inner = m.group(1)
         return "" if _find_bare_grid_span(inner.splitlines()) else m.group(0)
     text = re.sub(r"```[^\n]*\n([\s\S]*?)```", _fence_repl, text)
-    # 2) griglia nuda non recintata → togli le sue righe
+    # 2) griglia/e nuda/e non recintata/e → togli TUTTE le loro righe (non
+    #    solo l'ultima): se il DM ha disegnato sia la vecchia sia la nuova,
+    #    nessuna deve restare nel testo della chat. Cancella dall'ultimo
+    #    span al primo così gli indici non si spostano.
     lines = text.splitlines()
-    span = _find_bare_grid_span(lines)
-    if span:
+    for span in reversed(_bare_grid_spans(lines)):
         del lines[span[0]:span[1]]
-        text = "\n".join(lines)
+    text = "\n".join(lines)
     return text
 
 
@@ -639,19 +894,78 @@ def extract_sprites(text: str) -> dict[str, list[str]]:
     emettono 10×10 in stile vecchio: il renderer le scala su 16×16 via
     nearest-neighbor."""
     out: dict[str, list[str]] = {}
+
+    def _add(d: dict) -> None:
+        sid = str(d.get("id") or "").strip()
+        rows = d.get("rows")
+        # Dimensione naturale = numero di righe fornite, clampato in
+        # [8, 16]. Default 16 se mancante o non lista.
+        if isinstance(rows, list) and rows:
+            natural = max(8, min(16, len(rows)))
+        else:
+            natural = 16
+        grid = _normalize_grid(rows, natural)
+        if sid and grid:
+            out[sid] = grid
+
+    # 1) tag <SPRITE>{…}</SPRITE> (formato storico, ovunque nel testo)
     for m in RE_SPRITE.finditer(text):
         for d in _as_dicts(_safe_json(m.group(1))):
-            sid = str(d.get("id") or "").strip()
-            rows = d.get("rows")
-            # Dimensione naturale = numero di righe fornite, clampato in
-            # [8, 16]. Default 16 se mancante o non lista.
-            if isinstance(rows, list) and rows:
-                natural = max(8, min(16, len(rows)))
-            else:
-                natural = 16
-            grid = _normalize_grid(rows, natural)
-            if sid and grid:
-                out[sid] = grid
+            _add(d)
+    # 2) oggetti {…} "nudi" dentro la sezione SPRITE_START…SPRITE_END
+    #    (nuovo formato a tre blocchi: il DM può elencarli senza <SPRITE>).
+    sec = RE_SPRITE_SEC.search(text)
+    if sec:
+        body = sec.group(1)
+        for mo in RE_SPRITE_OBJ.finditer(body):
+            d = _safe_json(mo.group(0))
+            if isinstance(d, dict):
+                _add(d)
+    return out
+
+
+# Riga di legenda con separatore ESPLICITO `=`/`:` fra carattere ed
+# etichetta (es. `* = Partenza`, `# : Muro`). Provata PER PRIMA, così un
+# carattere-chiave che è anche un marcatore di lista (`*`, `>`, `-`) non
+# viene scambiato per un bullet.
+_RE_LEGEND_SEP  = re.compile(r"^(\S)\s*[=:]\s*(.*)$")
+# Forma senza separatore (`X Nome`): il carattere, spazio, poi l'etichetta.
+_RE_LEGEND_BARE = re.compile(r"^(\S)\s+(.+)$")
+# Bullet/citazione iniziale da togliere SOLO se la riga non è già una
+# coppia `chiave = etichetta` valida.
+_RE_LEGEND_BULLET = re.compile(r"^[\-\*•·>]\s+")
+
+
+def extract_legend(text: str) -> list[dict]:
+    """Legenda mappa dal blocco LEGENDA_START…LEGENDA_END: una riga per
+    carattere di cella, nella forma `X = Nome` (accetta anche `X: Nome`,
+    `X - Nome`, `X Nome`). Restituisce [{char, label}] nell'ordine emesso.
+    Lista vuota se il blocco manca o è illeggibile."""
+    m = RE_LEGEND.search(text)
+    if not m:
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for ln in m.group(1).splitlines():
+        s = ln.strip()
+        if not s:
+            continue
+        # 1) coppia `chiave = etichetta`: provata PRIMA di togliere bullet,
+        #    così un carattere-chiave che è anche un bullet (* > -) resta
+        #    la chiave e non viene mangiato.
+        mm = _RE_LEGEND_SEP.match(s)
+        # 2) se non c'è separatore esplicito, togli UN bullet iniziale e
+        #    riprova (`- # = Muro`), poi accetta la forma `X Nome`.
+        if not mm:
+            s = _RE_LEGEND_BULLET.sub("", s).strip()
+            mm = _RE_LEGEND_SEP.match(s) or _RE_LEGEND_BARE.match(s)
+        if not mm:
+            continue
+        ch = mm.group(1)
+        label = mm.group(2).strip().strip("*`_")
+        if ch and ch not in seen:
+            seen.add(ch)
+            out.append({"char": ch, "label": label})
     return out
 
 
@@ -700,20 +1014,50 @@ def extract_spell_casts(text: str) -> list[dict]:
 # ────────────────────────────────────────────────────────────────────────
 
 def resolve_roll_requests(
-    text: str, human_names: list[str] | None = None
+    text: str, human_names: list[str] | None = None,
+    default_human: str | None = None,
 ) -> tuple[str, list[dict], list[dict]]:
     """
     Esegue i <ROLL_REQ> del testo. I tiri il cui campo `by` corrisponde a un
     PG UMANO NON vengono eseguiti: spettano al giocatore (riquadro dadi).
+
+    `default_human`: nome del PG umano a cui attribuire un <ROLL_REQ> SENZA
+    campo `by` (il DM dovrebbe sempre metterlo — è OBBLIGATORIO — ma a volte
+    lo scorda). Senza questo ripiego un tiro non etichettato veniva tirato
+    dal SISTEMA anche quando toccava al giocatore: il chiamante lo passa solo
+    quando il tiro è chiaramente di un umano (suo turno, o unico umano senza
+    PG IA), così a lanciarlo è il giocatore. Un `by` NON vuoto ma ignoto resta
+    tirato dal sistema (è quasi sempre un mostro/PNG).
+
     Restituisce:
       - testo con i tag sostituiti dal risultato inline leggibile
       - lista dei risultati eseguiti (dict) per il log e la conversazione
       - lista dei tiri in attesa (payload dict) che deve tirare il giocatore
     """
-    human = {(n or "").strip().lower() for n in (human_names or []) if n}
+    # lower → nome canonico: serve sia per il match sia per normalizzare
+    # il campo `by` dei pending (il frontend e /api/roll confrontano per
+    # nome, devono ricevere il nome ESATTO della scheda).
+    human = {(n or "").strip().lower(): (n or "").strip()
+             for n in (human_names or []) if n}
     results: list[dict] = []
     pending: list[dict] = []
     halt_added = [False]   # nonlocal flag: sentinel posato una sola volta
+
+    def _human_canonical(by: str) -> str | None:
+        """Nome canonico del PG umano se `by` lo identifica, altrimenti None.
+        Match esatto (case-insensitive) oppure nome umano come parola intera
+        dentro `by`: il DM a volte decora il nome («Efi (Guerriera)»,
+        «la maga Lyra») e il tiro finiva tirato dal sistema invece che
+        proposto al giocatore."""
+        b = (by or "").strip().lower()
+        if not b:
+            return None
+        if b in human:
+            return human[b]
+        for low, canon in human.items():
+            if low and re.search(rf"(?<!\w){re.escape(low)}(?!\w)", b):
+                return canon
+        return None
 
     def _sub(match: re.Match) -> str:
         payloads = _as_dicts(_safe_json(match.group(1)))
@@ -723,11 +1067,15 @@ def resolve_roll_requests(
         saw_human = False
         for payload in payloads:
             by = (payload.get("by") or "").strip()
-            if by and by.lower() in human:
+            # `by` vuoto + tiro chiaramente di un umano → lo lancia lui, non
+            # il sistema. `by` valorizzato ma ignoto → resta al sistema.
+            canon = _human_canonical(by) or (default_human if not by else None)
+            if canon:
                 # tiro di un PG umano: lo lancia il giocatore, non il sistema.
                 # NON aggiungiamo testo "tira XdY" inline nella narrazione:
                 # il riquadro dadi del frontend mostra già nome, espressione
                 # e ragione del tiro. Duplicarlo in chat era ridondante.
+                payload["by"] = canon
                 pending.append(payload)
                 saw_human = True
                 continue
@@ -778,7 +1126,7 @@ def _format_roll_pending(payload: dict) -> str:
 def _format_roll_inline(r: rules.RollResult, payload: dict) -> str:
     by = payload.get("by")
     target = payload.get("target")
-    parts = [f"**🎲 {r.expr}"]
+    parts = [f"🎲 {r.expr}"]
     if r.advantage:
         parts.append(" (vant)")
     if r.disadvantage:
@@ -1001,6 +1349,22 @@ def apply_state_update(state: dict, update: dict,
         update = {k: v for k, v in update.items() if k != "players_hp"}
     # Whitelist: applica solo le chiavi non protette.
     safe = {k: v for k, v in update.items() if k not in _STATE_UPDATE_BLOCKED}
+    # active_player: normalizza al nome ESATTO della scheda. Il DM scrive
+    # spesso il nome con maiuscole diverse o decorato («la maga Lyra»): il
+    # frontend confronta per nome per decidere se è il turno del giocatore
+    # umano (riquadro dadi «Tocca a te») e un mismatch lo mostrava come IA.
+    ap = safe.get("active_player")
+    if isinstance(ap, str) and ap.strip():
+        ap_low = ap.strip().lower()
+        for p in state.get("players", []):
+            name = (p.get("name") or "").strip()
+            if not name:
+                continue
+            low = name.lower()
+            if low == ap_low or re.search(
+                    rf"(?<!\w){re.escape(low)}(?!\w)", ap_low):
+                safe["active_player"] = name
+                break
     state.update(safe)
 
 
@@ -1207,7 +1571,7 @@ def apply_long_rest(state: dict, on_persist=None) -> list[str]:
         if isinstance(hp, dict):
             mx = hp.get("max")
             try:
-                mx_int = int(mx)
+                mx_int = int(mx or 0)
             except (TypeError, ValueError):
                 mx_int = None
             if mx_int is not None and mx_int > 0:
@@ -1329,6 +1693,14 @@ def apply_sprites(state: dict, sprites: dict) -> None:
             store[sid] = grid
 
 
+def apply_legend(state: dict, legend: list[dict]) -> None:
+    """Registra la legenda mappa in `state['map_legend']`. Sovrascrive solo
+    se il DM ha emesso una legenda non vuota: un ridisegno senza LEGENDA
+    mantiene quella precedente (meglio una legenda vecchia che nessuna)."""
+    if legend:
+        state["map_legend"] = legend
+
+
 def apply_scene(state: dict, scene: dict | None) -> None:
     """Registra in `state['scene_art']` l'illustrazione pixel-art della
     scena corrente generata dal DM (griglia 32×32 + didascalia)."""
@@ -1339,9 +1711,9 @@ def apply_scene(state: dict, scene: dict | None) -> None:
 __all__ = [
     "clean_text", "strip_tags", "strip_narrative",
     "extract_state", "extract_chars", "extract_map", "extract_music",
-    "extract_sprites", "extract_scene", "extract_roll_requests",
+    "extract_sprites", "extract_scene", "extract_legend", "extract_roll_requests",
     "extract_spell_casts", "resolve_roll_requests",
     "apply_state_update", "apply_char_updates", "apply_spell_casts",
     "apply_long_rest",
-    "apply_music_update", "apply_sprites", "apply_scene", "_deep_merge",
+    "apply_music_update", "apply_sprites", "apply_legend", "apply_scene", "_deep_merge",
 ]

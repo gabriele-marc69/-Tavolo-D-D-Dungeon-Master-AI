@@ -1,5 +1,6 @@
-import json, pathlib, sys
-sys.stdout.reconfigure(encoding='utf-8')
+import io, json, pathlib, sys
+if isinstance(sys.stdout, io.TextIOWrapper):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 PATH = pathlib.Path("bestiary.json")
 data = json.loads(PATH.read_text(encoding="utf-8"))

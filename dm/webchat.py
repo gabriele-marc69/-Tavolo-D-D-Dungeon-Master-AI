@@ -11,6 +11,7 @@ Bugfix rispetto alla versione precedente:
 """
 from __future__ import annotations
 
+import io
 import os
 import queue
 import sys
@@ -24,8 +25,10 @@ from typing import Callable, Optional
 # Riconfiguriamo stdout/stderr a UTF-8 con replacement per blindare
 # i log [WEBCHAT] anche quando il modulo è importato fuori da app.py.
 try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 except (AttributeError, OSError):
     pass
 
@@ -203,7 +206,25 @@ _JS_LAST_ASSISTANT = r"""
       '[data-testid*="reasoning" i], [class*="reasoning" i]'
     );
     junk.forEach((n) => { try { n.remove(); } catch (_) {} });
-    return clean(clone.innerText || clone.textContent);
+    // innerText riflette i ritorni a capo SOLO se il nodo è renderizzato
+    // (attaccato al DOM e con layout). Un clone STACCATO fa fallback a
+    // textContent → tutti i \n spariscono e la mappa ASCII collassa in una
+    // riga sola. Attacchiamo il clone fuori schermo per leggere innerText
+    // con i ritorni a capo, poi lo rimuoviamo.
+    let txt = '';
+    try {
+      clone.style.position = 'fixed';
+      clone.style.left = '-99999px';
+      clone.style.top = '0';
+      clone.style.whiteSpace = 'pre-wrap';
+      document.body.appendChild(clone);
+      txt = clone.innerText || clone.textContent;
+    } catch (_) {
+      txt = clone.innerText || clone.textContent;
+    } finally {
+      try { clone.remove(); } catch (_) {}
+    }
+    return clean(txt);
   };
   const pick = (sels) => {
     let best = '';
@@ -321,6 +342,7 @@ class Webchat:
         self._briefing_sent = False
         self._briefing_in_flight = False
         self._open = False
+        self._working = False   # True mentre il worker esegue un task Playwright
         # Stato osservabile dal frontend: {ts, phase, detail, error}.
         # phase ∈ {"idle","opening","waiting_inflight","sending","success",
         # "error","empty"}. Aggiornato a ogni transizione importante della
@@ -348,10 +370,13 @@ class Webchat:
     def _worker_loop(self):
         while True:
             fn, args, kwargs, reply_q = self._tasks.get()
+            self._working = True
             try:
                 reply_q.put(("ok", fn(*args, **kwargs)))
             except Exception as e:
                 reply_q.put(("error", str(e)))
+            finally:
+                self._working = False
 
     def _run(self, fn: Callable, *args, timeout: int = 180, **kwargs):
         if self._thread is None or not self._thread.is_alive():
@@ -395,6 +420,7 @@ class Webchat:
                 print(f"[WEBCHAT] impossibile rimuovere {name}: {e}", flush=True)
 
     def _launch_context(self):
+        assert self._pw is not None, "Playwright non avviato"
         os.makedirs(self.config.profile_dir, exist_ok=True)
         self._clean_singleton_locks(self.config.profile_dir)
         base_args = ["--disable-blink-features=AutomationControlled"]
@@ -482,6 +508,7 @@ class Webchat:
         self._open = False
 
         # bootstrap
+        assert sync_playwright is not None  # garantito da _PW_AVAILABLE sopra
         print(f"[WEBCHAT] Avvio Playwright + Chromium su {self.config.url}", flush=True)
         self._pw = sync_playwright().start()
         try:
@@ -627,6 +654,22 @@ class Webchat:
                 continue
         return False
 
+    @staticmethod
+    def _looks_incomplete(text: str) -> bool:
+        """True se la risposta sembra ancora a metà: un blocco mappa è
+        APERTO (c'è MAP_START ma manca un MAP_END dopo di esso). Una mappa
+        20×20 si genera riga per riga e può rallentare a metà: senza questo
+        guard la finestra di stabilità scadeva e si catturava una griglia
+        TRONCATA (senza MAP_END). Il deadline complessivo protegge comunque
+        dal caso in cui MAP_END non arrivi mai."""
+        if not text:
+            return False
+        up = text.upper()
+        i = up.rfind("MAP_START")
+        if i == -1:
+            return False
+        return "MAP_END" not in up[i + len("MAP_START"):]
+
     def _send_and_wait(self, page, prompt: str, timeout_s: int) -> str:
         deadline = datetime.now().timestamp() + timeout_s
         page.bring_to_front()
@@ -669,6 +712,12 @@ class Webchat:
             if text != last_text:
                 last_text = text
                 stable_since = datetime.now().timestamp()
+                continue
+            # Blocco mappa aperto (MAP_START senza MAP_END): la risposta è
+            # ancora in arrivo anche se il testo non cresce per un attimo.
+            # Non confermarla come stabile finché la mappa non si chiude.
+            if self._looks_incomplete(text):
+                stable_since = None
                 continue
             if stable_since and datetime.now().timestamp() - stable_since >= self.config.stable_seconds:
                 return text
@@ -811,10 +860,43 @@ class Webchat:
             return False
         if self._briefing_in_flight:
             return True
+        # Worker già impegnato in un invio: la pagina è necessariamente
+        # operativa (e loggata). Senza questo check la richiesta restava
+        # bloccata 20s in coda dietro l'invio in corso e il task stantio
+        # girava comunque a invio finito.
+        if self._working:
+            return True
         try:
             return bool(self._run(self._page_has_input, timeout=20))
         except Exception:
             return False
+
+    def new_chat(self) -> bool:
+        """Apre una conversazione NUOVA nella chat web navigando alla URL
+        base del modello (su DeepSeek/Claude/Qwen/Grok la home = chat nuova)
+        e dimentica il briefing. La usa «Nuova partita»: la conversazione
+        precedente resta nello storico del sito ma il DM riparte pulito,
+        senza il contesto (trama, mappe, esiti) della partita conclusa."""
+        if not self._open:
+            return False
+
+        def _do():
+            page = self._ensure()
+            page.goto(self.config.url, wait_until="domcontentloaded",
+                      timeout=60000)
+            page.bring_to_front()
+            return True
+
+        try:
+            ok = bool(self._run(_do, timeout=90))
+        except Exception as e:
+            msg = str(e).splitlines()[0] if str(e) else type(e).__name__
+            print(f"[WEBCHAT] new_chat fallita: {msg}", flush=True)
+            self._set_status("error", "apertura nuova conversazione fallita", msg)
+            return False
+        self._briefing_sent = False
+        self._set_status("idle", "nuova conversazione aperta")
+        return ok
 
     def send(self, prompt: str, timeout: Optional[int] = None) -> str:
         timeout_s = timeout or self.config.timeout
